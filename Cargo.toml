@@ -29,6 +29,14 @@ path = "src/bin/server.rs"
 name = "test-client"
 path = "src/bin/test_client.rs"
 
+[[bin]]
+name = "benchmark"
+path = "src/bin/benchmark.rs"
+
+[[bin]]
+name = "quick-benchmark"
+path = "src/bin/quick_benchmark.rs"
+
 [lib]
 name = "redis_sim"
 path = "src/lib.rs"

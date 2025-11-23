@@ -242,6 +242,19 @@ cargo test
 cargo build --release
 ```
 
+## Performance
+
+The production server achieves **~15,000 operations/second** with sub-millisecond latency:
+
+| Operation | Throughput | Latency |
+|-----------|------------|---------|
+| PING | 14,748 req/sec | 0.068 ms |
+| SET | 15,086 req/sec | 0.066 ms |
+| GET | 14,285 req/sec | 0.070 ms |
+| INCR | 15,000 req/sec | 0.067 ms |
+
+See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for detailed performance analysis.
+
 ## Example Usage
 
 ### Basic Deterministic Test
