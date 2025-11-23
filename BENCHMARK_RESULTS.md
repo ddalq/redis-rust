@@ -75,14 +75,34 @@
 - **Data Structures:** Zero-copy where possible, efficient heap allocation
 - **Synchronization:** parking_lot RwLock (faster than std::sync::RwLock)
 
+## Comparison with Official Redis
+
+### Performance Ratio
+- **Our Implementation:** ~15,000 ops/sec
+- **Official Redis (standard):** ~100,000 ops/sec  
+- **Ratio:** ~15% of Redis performance
+
+### Why the Difference?
+1. **Architecture:** Actor-based (safety) vs single-threaded event loop (speed)
+2. **Synchronization:** RwLock overhead vs lock-free single thread
+3. **Optimization:** Educational clarity vs 15+ years of micro-optimizations
+
+### Trade-offs Accepted
+✅ **Safety:** Rust prevents memory bugs, data races  
+✅ **Clarity:** Readable code, easier to maintain  
+✅ **Testing:** Deterministic simulator for correctness  
+❌ **Speed:** 7x slower than highly-optimized C implementation
+
+See [PERFORMANCE_COMPARISON.md](PERFORMANCE_COMPARISON.md) for detailed analysis.
+
 ## Conclusion
 
-The production Redis server demonstrates **excellent performance** for a caching server:
+The production Redis server demonstrates **excellent performance** for an educational implementation:
 
-- **14,000-15,000 operations/second** sustained throughput
-- **Sub-millisecond latency** for all operations  
+- **14,000-15,000 operations/second** sustained throughput (~15% of official Redis)
+- **Sub-millisecond latency** for all operations (comparable to Redis)
 - **Linear scaling** with concurrent connections
-- **Production-ready** architecture with proper error handling
+- **Production-ready** for small-medium workloads (<20,000 ops/sec)
 
-The actor-based design provides a good balance between simplicity and performance,
-making it suitable for real-world caching workloads.
+The actor-based design provides a good balance between simplicity, safety, and performance,
+making it suitable for web application caching, session storage, and development environments.
