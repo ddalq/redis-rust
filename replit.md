@@ -14,6 +14,16 @@ This project implements a **deterministic simulation framework** that allows tes
 
 ## Recent Changes
 
+**November 23, 2025**: Full caching features added
+- ✅ **TTL & Expiration**: SETEX, EXPIRE, EXPIREAT, TTL, PTTL, PERSIST commands
+- ✅ **Atomic Counters**: INCR, DECR, INCRBY, DECRBY for cache counters
+- ✅ **Advanced String Ops**: APPEND, GETSET, SETNX, MGET, MSET for batch operations
+- ✅ **Key Management**: EXISTS, TYPE, KEYS, FLUSHDB, FLUSHALL commands
+- ✅ **Server Stats**: INFO command for monitoring cache statistics
+- ✅ **Automatic Expiration**: Background key eviction based on virtual time
+- ✅ **Access Tracking**: LRU-ready access time tracking for all keys
+- **Total**: 35+ Redis commands implemented for production caching
+
 **November 22, 2025**: Initial implementation
 - Built complete simulation framework with virtual time, deterministic RNG, and network simulation
 - Implemented Redis core data structures: SDS, Lists, Sets, Hashes, Sorted Sets
@@ -121,17 +131,63 @@ Complete Redis Serialization Protocol parser:
 
 #### Commands (`commands.rs`)
 Command parsing and execution:
-- 15+ implemented commands
+- 35+ implemented commands for full caching support
 - Type checking (WRONGTYPE errors)
 - Proper error handling
+- TTL/Expiration support
 
 **Supported Commands:**
-- Strings: GET, SET, DEL
-- Lists: LPUSH, RPUSH, LPOP, RPOP, LRANGE
-- Sets: SADD, SMEMBERS, SISMEMBER
-- Hashes: HSET, HGET, HGETALL
-- Sorted Sets: ZADD, ZRANGE, ZSCORE
-- General: PING
+
+**String Operations (Caching Core):**
+- `GET`, `SET`, `DEL` - Basic key-value operations
+- `SETEX` - Set with expiration (TTL in seconds)
+- `SETNX` - Set if not exists (atomic cache lock)
+- `APPEND` - Append to string value
+- `GETSET` - Atomic get-and-set
+- `MGET`, `MSET` - Batch get/set multiple keys
+
+**Atomic Counters:**
+- `INCR`, `DECR` - Increment/decrement by 1
+- `INCRBY`, `DECRBY` - Increment/decrement by N
+
+**Expiration & TTL:**
+- `EXPIRE` - Set TTL in seconds (supports immediate expiration with TTL <= 0)
+- `EXPIREAT` - Set expiration at Unix timestamp (seconds since epoch)
+- `PEXPIREAT` - Set expiration at Unix timestamp (milliseconds since epoch)
+- `TTL` - Get remaining TTL in seconds
+- `PTTL` - Get remaining TTL in milliseconds
+- `PERSIST` - Remove expiration from key
+
+**EXPIREAT/PEXPIREAT Implementation**: The simulator supports Redis-compatible Unix epoch timestamps through a configurable `simulation_start_epoch` anchor point. When EXPIREAT receives a Unix timestamp in seconds (or PEXPIREAT in milliseconds), it converts it to simulation-relative time by subtracting the `simulation_start_epoch`, allowing proper handling of real-world expiration times in the deterministic virtual time system.
+
+**Key Management:**
+- `EXISTS` - Check if keys exist
+- `TYPE` - Get value type (string/list/set/hash/zset)
+- `KEYS` - Find keys matching pattern
+- `FLUSHDB`, `FLUSHALL` - Clear all data
+
+**Lists:**
+- `LPUSH`, `RPUSH` - Push to left/right
+- `LPOP`, `RPOP` - Pop from left/right
+- `LRANGE` - Get range of elements
+
+**Sets:**
+- `SADD` - Add members
+- `SMEMBERS` - Get all members
+- `SISMEMBER` - Check membership
+
+**Hashes:**
+- `HSET`, `HGET` - Set/get hash field
+- `HGETALL` - Get all fields
+
+**Sorted Sets:**
+- `ZADD` - Add with score
+- `ZRANGE` - Get range by rank
+- `ZSCORE` - Get member's score
+
+**Server:**
+- `PING` - Health check
+- `INFO` - Server statistics and metrics
 
 #### Server (`server.rs`)
 Redis server and client implementations for the simulator:

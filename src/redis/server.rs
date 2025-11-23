@@ -24,6 +24,7 @@ fn decode_request_id(data: &[u8]) -> Option<(u64, &[u8])> {
 pub struct RedisServer {
     host_id: HostId,
     executor: CommandExecutor,
+    epoch_initialized: bool,
 }
 
 impl RedisServer {
@@ -31,6 +32,14 @@ impl RedisServer {
         RedisServer {
             host_id,
             executor: CommandExecutor::new(),
+            epoch_initialized: false,
+        }
+    }
+    
+    fn ensure_epoch_initialized(&mut self, sim: &Simulation) {
+        if !self.epoch_initialized {
+            self.executor.set_simulation_start_epoch(sim.simulation_start_epoch());
+            self.epoch_initialized = true;
         }
     }
 
@@ -41,6 +50,8 @@ impl RedisServer {
 
         match &event.event_type {
             EventType::NetworkMessage(msg) => {
+                self.ensure_epoch_initialized(sim);
+                self.executor.set_time(sim.current_time());
                 if let Some((request_id, payload)) = decode_request_id(&msg.payload) {
                     if let Ok((resp_value, _)) = RespParser::parse(payload) {
                         if let Ok(cmd) = Command::from_resp(&resp_value) {
@@ -53,6 +64,8 @@ impl RedisServer {
                 }
             }
             EventType::HostStart => {
+                self.ensure_epoch_initialized(sim);
+                self.executor.set_time(sim.current_time());
                 println!("[{:?}] Redis server started on host {:?}", sim.current_time(), self.host_id);
             }
             _ => {}

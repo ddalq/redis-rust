@@ -5,6 +5,7 @@ use std::collections::{BinaryHeap, HashMap};
 pub struct SimulationConfig {
     pub seed: u64,
     pub max_time: VirtualTime,
+    pub simulation_start_epoch: i64,
 }
 
 impl Default for SimulationConfig {
@@ -12,6 +13,7 @@ impl Default for SimulationConfig {
         SimulationConfig {
             seed: 42,
             max_time: VirtualTime::from_millis(60_000),
+            simulation_start_epoch: 0,
         }
     }
 }
@@ -26,6 +28,12 @@ pub struct Simulation {
     next_timer_id: u64,
     next_host_id: usize,
     message_queue: Vec<Message>,
+}
+
+impl Simulation {
+    pub fn simulation_start_epoch(&self) -> i64 {
+        self.config.simulation_start_epoch
+    }
 }
 
 impl Simulation {
