@@ -1,13 +1,13 @@
-use super::SharedRedisState;
+use super::ShardedRedisState;
 use tokio::time::{interval, Duration};
 use tracing::debug;
 
 pub struct TtlManager {
-    state: SharedRedisState,
+    state: ShardedRedisState,
 }
 
 impl TtlManager {
-    pub fn new(state: SharedRedisState) -> Self {
+    pub fn new(state: ShardedRedisState) -> Self {
         TtlManager { state }
     }
     
@@ -16,8 +16,10 @@ impl TtlManager {
         
         loop {
             tick.tick().await;
-            debug!("TTL manager checking for expired keys");
-            self.state.evict_expired();
+            let evicted = self.state.evict_expired_all_shards();
+            if evicted > 0 {
+                debug!("TTL manager evicted {} expired keys", evicted);
+            }
         }
     }
 }

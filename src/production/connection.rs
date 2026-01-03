@@ -1,4 +1,4 @@
-use super::SharedRedisState;
+use super::ShardedRedisState;
 use crate::redis::{Command, RespParser, RespValue};
 use bytes::BytesMut;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -7,13 +7,13 @@ use tracing::{info, warn, error};
 
 pub struct ConnectionHandler {
     stream: TcpStream,
-    state: SharedRedisState,
+    state: ShardedRedisState,
     buffer: BytesMut,
     client_addr: String,
 }
 
 impl ConnectionHandler {
-    pub fn new(stream: TcpStream, state: SharedRedisState, client_addr: String) -> Self {
+    pub fn new(stream: TcpStream, state: ShardedRedisState, client_addr: String) -> Self {
         ConnectionHandler {
             stream,
             state,
@@ -26,7 +26,6 @@ impl ConnectionHandler {
         info!("Client connected: {}", self.client_addr);
         
         loop {
-            // Read from socket
             let mut read_buf = vec![0u8; 4096];
             match self.stream.read(&mut read_buf).await {
                 Ok(0) => {
@@ -36,7 +35,6 @@ impl ConnectionHandler {
                 Ok(n) => {
                     self.buffer.extend_from_slice(&read_buf[..n]);
                     
-                    // Try to parse and execute commands
                     while let Some(response) = self.try_execute_command() {
                         if let Err(e) = self.stream.write_all(&response).await {
                             error!("Failed to write response: {}", e);
@@ -53,21 +51,13 @@ impl ConnectionHandler {
     }
     
     fn try_execute_command(&mut self) -> Option<Vec<u8>> {
-        // Try to parse a RESP command from buffer
         match RespParser::parse(&self.buffer) {
             Ok((resp_value, bytes_consumed)) => {
-                // Remove parsed bytes from buffer
                 self.buffer.advance(bytes_consumed);
                 
-                // Parse command
                 match Command::from_resp(&resp_value) {
                     Ok(cmd) => {
-                        // Execute command with shared state
-                        let response = self.state.with_lock(|executor| {
-                            executor.execute(&cmd)
-                        });
-                        
-                        // Encode response
+                        let response = self.state.execute(&cmd);
                         Some(RespParser::encode(&response))
                     }
                     Err(e) => {
@@ -77,10 +67,7 @@ impl ConnectionHandler {
                     }
                 }
             }
-            Err(_) => {
-                // Not enough data yet, wait for more
-                None
-            }
+            Err(_) => None,
         }
     }
 }

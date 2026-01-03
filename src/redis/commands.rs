@@ -405,6 +405,52 @@ pub struct CommandExecutor {
     simulation_start_epoch: i64,
 }
 
+impl Command {
+    /// Returns true if this command only reads data (no mutations)
+    pub fn is_read_only(&self) -> bool {
+        matches!(self,
+            Command::Get(_) |
+            Command::MGet(_) |
+            Command::Exists(_) |
+            Command::TypeOf(_) |
+            Command::Keys(_) |
+            Command::Ttl(_) |
+            Command::Pttl(_) |
+            Command::SMembers(_) |
+            Command::SIsMember(_, _) |
+            Command::HGet(_, _) |
+            Command::HGetAll(_) |
+            Command::LRange(_, _, _) |
+            Command::ZRange(_, _, _) |
+            Command::ZScore(_, _) |
+            Command::Info |
+            Command::Ping
+        )
+    }
+    
+    /// Returns the key(s) this command operates on (for sharding)
+    pub fn get_primary_key(&self) -> Option<&str> {
+        match self {
+            Command::Get(k) | Command::Set(k, _) | Command::SetEx(k, _, _) |
+            Command::SetNx(k, _) | Command::Del(k) | Command::TypeOf(k) |
+            Command::Expire(k, _) | Command::ExpireAt(k, _) | Command::PExpireAt(k, _) |
+            Command::Ttl(k) | Command::Pttl(k) | Command::Persist(k) |
+            Command::Incr(k) | Command::Decr(k) | Command::IncrBy(k, _) |
+            Command::DecrBy(k, _) | Command::Append(k, _) | Command::GetSet(k, _) |
+            Command::LPush(k, _) | Command::RPush(k, _) | Command::LPop(k) |
+            Command::RPop(k) | Command::LRange(k, _, _) | Command::SAdd(k, _) |
+            Command::SMembers(k) | Command::SIsMember(k, _) | Command::HSet(k, _, _) |
+            Command::HGet(k, _) | Command::HGetAll(k) | Command::ZAdd(k, _) |
+            Command::ZRange(k, _, _) | Command::ZScore(k, _) => Some(k.as_str()),
+            Command::Exists(keys) => keys.first().map(|s| s.as_str()),
+            Command::MGet(keys) => keys.first().map(|s| s.as_str()),
+            Command::MSet(pairs) => pairs.first().map(|(k, _)| k.as_str()),
+            Command::Keys(_) | Command::FlushDb | Command::FlushAll |
+            Command::Info | Command::Ping | Command::Unknown(_) => None,
+        }
+    }
+}
+
 impl CommandExecutor {
     pub fn new() -> Self {
         CommandExecutor {
@@ -426,6 +472,15 @@ impl CommandExecutor {
         self.current_time = time;
         self.evict_expired_keys();
     }
+    
+    pub fn get_current_time(&self) -> VirtualTime {
+        self.current_time
+    }
+    
+    /// Update time without evicting keys (for read-only operations)
+    pub fn update_time_readonly(&mut self, time: VirtualTime) {
+        self.current_time = time;
+    }
 
     fn is_expired(&self, key: &str) -> bool {
         if let Some(expiration) = self.expirations.get(key) {
@@ -433,6 +488,26 @@ impl CommandExecutor {
         } else {
             false
         }
+    }
+    
+    /// Direct expiration eviction - call this from TTL manager
+    /// Returns the number of keys evicted
+    pub fn evict_expired_direct(&mut self, current_time: VirtualTime) -> usize {
+        self.current_time = current_time;
+        
+        let expired_keys: Vec<String> = self.expirations
+            .iter()
+            .filter(|(_, &exp_time)| exp_time <= self.current_time)
+            .map(|(k, _)| k.clone())
+            .collect();
+        
+        let count = expired_keys.len();
+        for key in expired_keys {
+            self.data.remove(&key);
+            self.expirations.remove(&key);
+            self.access_times.remove(&key);
+        }
+        count
     }
 
     fn evict_expired_keys(&mut self) {
@@ -447,6 +522,13 @@ impl CommandExecutor {
             self.expirations.remove(&key);
             self.access_times.remove(&key);
         }
+    }
+    
+    /// Execute a read-only command (can be called with just &self for some operations)
+    /// Note: This still requires &mut self due to access_times updates, but is semantically read-only
+    pub fn execute_read(&mut self, cmd: &Command) -> RespValue {
+        debug_assert!(cmd.is_read_only(), "execute_read called with write command");
+        self.execute(cmd)
     }
 
     fn get_value(&mut self, key: &str) -> Option<&Value> {
