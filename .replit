@@ -41,6 +41,15 @@ task = "shell.exec"
 args = "cargo run --bin redis-server --release"
 waitForPort = 3000
 
+[[workflows.workflow]]
+name = "Run Test"
+mode = "sequential"
+author = 778193
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cargo run --bin test-client --release"
+
 [deployment]
 deploymentTarget = "cloudrun"
 
@@ -51,3 +60,6 @@ externalPort = 3000
 [[ports]]
 localPort = 40477
 externalPort = 80
+
+[nix]
+packages = ["redis"]
