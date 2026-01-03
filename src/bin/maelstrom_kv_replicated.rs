@@ -87,6 +87,9 @@ impl NodeState {
             gossip_interval_ms: 100,
             peers: vec![],
             replication_factor: 3,
+            partitioned_mode: false,
+            selective_gossip: false,
+            virtual_nodes_per_physical: 150,
         };
         
         NodeState {
@@ -123,7 +126,7 @@ fn delta_to_json(delta: &ReplicationDelta) -> DeltaJson {
     DeltaJson {
         key: delta.key.clone(),
         value: delta.value.get().map(|sds| String::from_utf8_lossy(sds.as_bytes()).to_string()),
-        timestamp: delta.value.lww.timestamp.time,
+        timestamp: delta.value.timestamp.time,
         replica_id: delta.source_replica.0,
         expiry_ms: delta.value.expiry_ms,
         is_tombstone: delta.value.is_tombstone(),
@@ -131,25 +134,36 @@ fn delta_to_json(delta: &ReplicationDelta) -> DeltaJson {
 }
 
 fn json_to_delta(json: &DeltaJson) -> ReplicationDelta {
+    use redis_sim::replication::lattice::LwwRegister;
+    use redis_sim::replication::state::CrdtValue;
+
     let replica_id = ReplicaId::new(json.replica_id);
     let timestamp = LamportClock { time: json.timestamp, replica_id };
-    
+
     let mut replicated_value = if json.is_tombstone {
+        // Create a tombstoned LWW value
+        let mut lww = LwwRegister::new(replica_id);
+        lww.tombstone = true;
+        lww.timestamp = timestamp;
         let mut rv = ReplicatedValue::new(replica_id);
-        rv.lww.tombstone = true;
-        rv.lww.timestamp = timestamp;
+        rv.crdt = CrdtValue::Lww(lww);
+        rv.timestamp = timestamp;
         rv
     } else if let Some(ref v) = json.value {
         ReplicatedValue::with_value(SDS::from_str(v), timestamp)
     } else {
+        // No value and not tombstone - create tombstone
+        let mut lww = LwwRegister::new(replica_id);
+        lww.tombstone = true;
+        lww.timestamp = timestamp;
         let mut rv = ReplicatedValue::new(replica_id);
-        rv.lww.tombstone = true;
-        rv.lww.timestamp = timestamp;
+        rv.crdt = CrdtValue::Lww(lww);
+        rv.timestamp = timestamp;
         rv
     };
-    
+
     replicated_value.expiry_ms = json.expiry_ms;
-    
+
     ReplicationDelta::new(json.key.clone(), replicated_value, replica_id)
 }
 

@@ -179,6 +179,379 @@ impl PartialEq for VectorClock {
     }
 }
 
+// ============================================================================
+// GCounter - Grow-only Counter
+// ============================================================================
+
+/// Grow-only counter CRDT. Each replica tracks its own count.
+/// Value is the sum of all replica counts. Only supports increment.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GCounter {
+    counts: HashMap<ReplicaId, u64>,
+}
+
+impl GCounter {
+    pub fn new() -> Self {
+        GCounter {
+            counts: HashMap::new(),
+        }
+    }
+
+    /// Increment this replica's count by 1
+    pub fn increment(&mut self, replica_id: ReplicaId) {
+        let counter = self.counts.entry(replica_id).or_insert(0);
+        *counter += 1;
+    }
+
+    /// Increment this replica's count by arbitrary amount
+    pub fn increment_by(&mut self, replica_id: ReplicaId, amount: u64) {
+        let counter = self.counts.entry(replica_id).or_insert(0);
+        *counter += amount;
+    }
+
+    /// Get the total count across all replicas
+    pub fn value(&self) -> u64 {
+        self.counts.values().sum()
+    }
+
+    /// Get this replica's contribution
+    pub fn get_replica_count(&self, replica_id: &ReplicaId) -> u64 {
+        *self.counts.get(replica_id).unwrap_or(&0)
+    }
+
+    /// Merge with another GCounter (take max per replica)
+    pub fn merge(&self, other: &Self) -> Self {
+        let mut merged = self.counts.clone();
+        for (replica_id, &count) in &other.counts {
+            let entry = merged.entry(*replica_id).or_insert(0);
+            *entry = (*entry).max(count);
+        }
+        GCounter { counts: merged }
+    }
+
+    /// Check if this counter is empty (no increments from any replica)
+    pub fn is_empty(&self) -> bool {
+        self.counts.is_empty() || self.value() == 0
+    }
+}
+
+impl PartialEq for GCounter {
+    fn eq(&self, other: &Self) -> bool {
+        // Two GCounters are equal if they have the same value for all replicas
+        let all_keys: std::collections::HashSet<_> =
+            self.counts.keys().chain(other.counts.keys()).collect();
+        for k in all_keys {
+            if self.get_replica_count(k) != other.get_replica_count(k) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl Eq for GCounter {}
+
+// ============================================================================
+// PNCounter - Positive-Negative Counter
+// ============================================================================
+
+/// Positive-Negative counter CRDT. Supports both increment and decrement.
+/// Implemented as two GCounters: one for positive, one for negative.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PNCounter {
+    positive: GCounter,
+    negative: GCounter,
+}
+
+impl PNCounter {
+    pub fn new() -> Self {
+        PNCounter {
+            positive: GCounter::new(),
+            negative: GCounter::new(),
+        }
+    }
+
+    /// Increment the counter by 1
+    pub fn increment(&mut self, replica_id: ReplicaId) {
+        self.positive.increment(replica_id);
+    }
+
+    /// Decrement the counter by 1
+    pub fn decrement(&mut self, replica_id: ReplicaId) {
+        self.negative.increment(replica_id);
+    }
+
+    /// Increment by arbitrary amount
+    pub fn increment_by(&mut self, replica_id: ReplicaId, amount: u64) {
+        self.positive.increment_by(replica_id, amount);
+    }
+
+    /// Decrement by arbitrary amount
+    pub fn decrement_by(&mut self, replica_id: ReplicaId, amount: u64) {
+        self.negative.increment_by(replica_id, amount);
+    }
+
+    /// Get the counter value (positive - negative, can be negative)
+    pub fn value(&self) -> i64 {
+        self.positive.value() as i64 - self.negative.value() as i64
+    }
+
+    /// Merge with another PNCounter
+    pub fn merge(&self, other: &Self) -> Self {
+        PNCounter {
+            positive: self.positive.merge(&other.positive),
+            negative: self.negative.merge(&other.negative),
+        }
+    }
+
+    /// Check if counter is at zero with no operations
+    pub fn is_empty(&self) -> bool {
+        self.positive.is_empty() && self.negative.is_empty()
+    }
+}
+
+impl PartialEq for PNCounter {
+    fn eq(&self, other: &Self) -> bool {
+        self.positive == other.positive && self.negative == other.negative
+    }
+}
+
+impl Eq for PNCounter {}
+
+// ============================================================================
+// GSet - Grow-only Set
+// ============================================================================
+
+use std::collections::HashSet;
+use std::hash::Hash;
+
+/// Grow-only set CRDT. Elements can only be added, never removed.
+/// Merge is set union.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GSet<T: Clone + Eq + Hash> {
+    elements: HashSet<T>,
+}
+
+impl<T: Clone + Eq + Hash> Default for GSet<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Clone + Eq + Hash> GSet<T> {
+    pub fn new() -> Self {
+        GSet {
+            elements: HashSet::new(),
+        }
+    }
+
+    /// Add an element to the set. Returns true if element was newly added.
+    pub fn add(&mut self, element: T) -> bool {
+        self.elements.insert(element)
+    }
+
+    /// Check if element exists in the set
+    pub fn contains(&self, element: &T) -> bool {
+        self.elements.contains(element)
+    }
+
+    /// Get iterator over all elements
+    pub fn elements(&self) -> impl Iterator<Item = &T> {
+        self.elements.iter()
+    }
+
+    /// Get the number of elements
+    pub fn len(&self) -> usize {
+        self.elements.len()
+    }
+
+    /// Check if the set is empty
+    pub fn is_empty(&self) -> bool {
+        self.elements.is_empty()
+    }
+
+    /// Merge with another GSet (set union)
+    pub fn merge(&self, other: &Self) -> Self {
+        GSet {
+            elements: self.elements.union(&other.elements).cloned().collect(),
+        }
+    }
+}
+
+impl<T: Clone + Eq + Hash> PartialEq for GSet<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.elements == other.elements
+    }
+}
+
+impl<T: Clone + Eq + Hash> Eq for GSet<T> {}
+
+// ============================================================================
+// ORSet - Observed-Remove Set
+// ============================================================================
+
+/// Unique tag for each add operation in ORSet
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UniqueTag {
+    pub replica_id: ReplicaId,
+    pub sequence: u64,
+}
+
+impl UniqueTag {
+    pub fn new(replica_id: ReplicaId, sequence: u64) -> Self {
+        UniqueTag { replica_id, sequence }
+    }
+}
+
+/// Observed-Remove Set CRDT. Supports add and remove operations.
+/// Each add creates a unique tag. Remove removes all observed tags for an element.
+/// Add-wins semantics: concurrent add and remove results in element present.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ORSet<T: Clone + Eq + Hash> {
+    /// Map from element to set of active (non-removed) tags
+    elements: HashMap<T, HashSet<UniqueTag>>,
+    /// Next sequence number for each replica
+    next_sequence: HashMap<ReplicaId, u64>,
+}
+
+impl<T: Clone + Eq + Hash> Default for ORSet<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Clone + Eq + Hash> ORSet<T> {
+    pub fn new() -> Self {
+        ORSet {
+            elements: HashMap::new(),
+            next_sequence: HashMap::new(),
+        }
+    }
+
+    /// Add element with a unique tag. Returns the tag that was created.
+    pub fn add(&mut self, element: T, replica_id: ReplicaId) -> UniqueTag {
+        let seq = self.next_sequence.entry(replica_id).or_insert(0);
+        let tag = UniqueTag::new(replica_id, *seq);
+        *seq += 1;
+
+        self.elements.entry(element).or_default().insert(tag);
+        tag
+    }
+
+    /// Remove element by removing all observed tags.
+    /// Returns the tags that were removed (for replication).
+    pub fn remove(&mut self, element: &T) -> HashSet<UniqueTag> {
+        self.elements.remove(element).unwrap_or_default()
+    }
+
+    /// Check if element is in the set (has at least one active tag)
+    pub fn contains(&self, element: &T) -> bool {
+        self.elements
+            .get(element)
+            .map(|tags| !tags.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Get iterator over all elements currently in the set
+    pub fn elements(&self) -> impl Iterator<Item = &T> {
+        self.elements
+            .iter()
+            .filter(|(_, tags)| !tags.is_empty())
+            .map(|(elem, _)| elem)
+    }
+
+    /// Get the number of elements
+    pub fn len(&self) -> usize {
+        self.elements
+            .iter()
+            .filter(|(_, tags)| !tags.is_empty())
+            .count()
+    }
+
+    /// Check if the set is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get all tags for an element (for replication)
+    pub fn get_tags(&self, element: &T) -> Option<&HashSet<UniqueTag>> {
+        self.elements.get(element)
+    }
+
+    /// Merge with another ORSet.
+    /// For each element, take union of tags.
+    /// An element is present if it has any tags after merge.
+    pub fn merge(&self, other: &Self) -> Self {
+        let mut merged = ORSet::new();
+
+        // Merge sequence counters (take max for each replica)
+        for (replica, &seq) in &self.next_sequence {
+            let entry = merged.next_sequence.entry(*replica).or_insert(0);
+            *entry = (*entry).max(seq);
+        }
+        for (replica, &seq) in &other.next_sequence {
+            let entry = merged.next_sequence.entry(*replica).or_insert(0);
+            *entry = (*entry).max(seq);
+        }
+
+        // Collect all elements from both sets
+        let all_elements: HashSet<_> = self
+            .elements
+            .keys()
+            .chain(other.elements.keys())
+            .cloned()
+            .collect();
+
+        // For each element, merge the tag sets
+        for elem in all_elements {
+            let self_tags = self.elements.get(&elem).cloned().unwrap_or_default();
+            let other_tags = other.elements.get(&elem).cloned().unwrap_or_default();
+            let union: HashSet<_> = self_tags.union(&other_tags).cloned().collect();
+            if !union.is_empty() {
+                merged.elements.insert(elem, union);
+            }
+        }
+
+        merged
+    }
+
+    /// Apply a remove operation from another replica.
+    /// Removes only the specific tags that were observed by the remover.
+    pub fn apply_remove(&mut self, element: &T, removed_tags: &HashSet<UniqueTag>) {
+        if let Some(tags) = self.elements.get_mut(element) {
+            for tag in removed_tags {
+                tags.remove(tag);
+            }
+            // Clean up empty entries
+            if tags.is_empty() {
+                self.elements.remove(element);
+            }
+        }
+    }
+}
+
+impl<T: Clone + Eq + Hash> PartialEq for ORSet<T> {
+    fn eq(&self, other: &Self) -> bool {
+        // Two ORSets are equal if they contain the same elements with same tags
+        if self.elements.len() != other.elements.len() {
+            return false;
+        }
+        for (elem, tags) in &self.elements {
+            match other.elements.get(elem) {
+                Some(other_tags) => {
+                    if tags != other_tags {
+                        return false;
+                    }
+                }
+                None => return false,
+            }
+        }
+        true
+    }
+}
+
+impl<T: Clone + Eq + Hash> Eq for ORSet<T> {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,5 +604,304 @@ mod tests {
         vc2.increment(r2);
 
         assert!(vc1.concurrent_with(&vc2));
+    }
+
+    // ========================================================================
+    // GCounter Tests
+    // ========================================================================
+
+    #[test]
+    fn test_gcounter_basic() {
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut gc = GCounter::new();
+        assert_eq!(gc.value(), 0);
+
+        gc.increment(r1);
+        assert_eq!(gc.value(), 1);
+
+        gc.increment(r2);
+        gc.increment(r2);
+        assert_eq!(gc.value(), 3);
+    }
+
+    #[test]
+    fn test_gcounter_merge() {
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut gc1 = GCounter::new();
+        let mut gc2 = GCounter::new();
+
+        gc1.increment(r1);
+        gc1.increment(r1);
+
+        gc2.increment(r2);
+        gc2.increment(r2);
+        gc2.increment(r2);
+
+        let merged = gc1.merge(&gc2);
+        assert_eq!(merged.value(), 5); // 2 from r1 + 3 from r2
+    }
+
+    #[test]
+    fn test_gcounter_merge_idempotent() {
+        let r1 = ReplicaId::new(1);
+
+        let mut gc1 = GCounter::new();
+        gc1.increment(r1);
+        gc1.increment(r1);
+
+        let gc2 = gc1.clone();
+
+        // Merging identical counters should give same result
+        let merged = gc1.merge(&gc2);
+        assert_eq!(merged.value(), 2);
+    }
+
+    #[test]
+    fn test_gcounter_merge_commutative() {
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut gc1 = GCounter::new();
+        let mut gc2 = GCounter::new();
+
+        gc1.increment(r1);
+        gc2.increment(r2);
+
+        let merged1 = gc1.merge(&gc2);
+        let merged2 = gc2.merge(&gc1);
+
+        assert_eq!(merged1, merged2);
+    }
+
+    // ========================================================================
+    // PNCounter Tests
+    // ========================================================================
+
+    #[test]
+    fn test_pncounter_basic() {
+        let r1 = ReplicaId::new(1);
+
+        let mut pn = PNCounter::new();
+        assert_eq!(pn.value(), 0);
+
+        pn.increment(r1);
+        assert_eq!(pn.value(), 1);
+
+        pn.decrement(r1);
+        assert_eq!(pn.value(), 0);
+
+        pn.decrement(r1);
+        assert_eq!(pn.value(), -1);
+    }
+
+    #[test]
+    fn test_pncounter_merge() {
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut pn1 = PNCounter::new();
+        let mut pn2 = PNCounter::new();
+
+        pn1.increment(r1);
+        pn1.increment(r1);
+        pn1.decrement(r1);
+
+        pn2.increment(r2);
+        pn2.decrement(r2);
+        pn2.decrement(r2);
+
+        let merged = pn1.merge(&pn2);
+        // r1: +2 -1 = 1, r2: +1 -2 = -1, total = 0
+        assert_eq!(merged.value(), 0);
+    }
+
+    #[test]
+    fn test_pncounter_concurrent_operations() {
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut pn1 = PNCounter::new();
+        let mut pn2 = PNCounter::new();
+
+        // Concurrent increments on both replicas
+        pn1.increment_by(r1, 10);
+        pn2.increment_by(r2, 5);
+        pn2.decrement_by(r2, 3);
+
+        let merged = pn1.merge(&pn2);
+        assert_eq!(merged.value(), 12); // 10 + 5 - 3
+    }
+
+    // ========================================================================
+    // GSet Tests
+    // ========================================================================
+
+    #[test]
+    fn test_gset_basic() {
+        let mut gs: GSet<String> = GSet::new();
+        assert!(gs.is_empty());
+
+        assert!(gs.add("a".to_string()));
+        assert!(!gs.add("a".to_string())); // Already exists
+
+        assert!(gs.contains(&"a".to_string()));
+        assert!(!gs.contains(&"b".to_string()));
+        assert_eq!(gs.len(), 1);
+    }
+
+    #[test]
+    fn test_gset_merge() {
+        let mut gs1: GSet<String> = GSet::new();
+        let mut gs2: GSet<String> = GSet::new();
+
+        gs1.add("a".to_string());
+        gs1.add("b".to_string());
+
+        gs2.add("b".to_string());
+        gs2.add("c".to_string());
+
+        let merged = gs1.merge(&gs2);
+        assert_eq!(merged.len(), 3);
+        assert!(merged.contains(&"a".to_string()));
+        assert!(merged.contains(&"b".to_string()));
+        assert!(merged.contains(&"c".to_string()));
+    }
+
+    #[test]
+    fn test_gset_merge_commutative() {
+        let mut gs1: GSet<i32> = GSet::new();
+        let mut gs2: GSet<i32> = GSet::new();
+
+        gs1.add(1);
+        gs1.add(2);
+        gs2.add(2);
+        gs2.add(3);
+
+        let merged1 = gs1.merge(&gs2);
+        let merged2 = gs2.merge(&gs1);
+
+        assert_eq!(merged1, merged2);
+    }
+
+    // ========================================================================
+    // ORSet Tests
+    // ========================================================================
+
+    #[test]
+    fn test_orset_basic() {
+        let r1 = ReplicaId::new(1);
+
+        let mut os: ORSet<String> = ORSet::new();
+        assert!(os.is_empty());
+
+        os.add("a".to_string(), r1);
+        assert!(os.contains(&"a".to_string()));
+        assert_eq!(os.len(), 1);
+
+        os.remove(&"a".to_string());
+        assert!(!os.contains(&"a".to_string()));
+        assert!(os.is_empty());
+    }
+
+    #[test]
+    fn test_orset_add_after_remove() {
+        let r1 = ReplicaId::new(1);
+
+        let mut os: ORSet<String> = ORSet::new();
+
+        os.add("a".to_string(), r1);
+        os.remove(&"a".to_string());
+        os.add("a".to_string(), r1);
+
+        assert!(os.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn test_orset_merge() {
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut os1: ORSet<String> = ORSet::new();
+        let mut os2: ORSet<String> = ORSet::new();
+
+        os1.add("a".to_string(), r1);
+        os2.add("b".to_string(), r2);
+
+        let merged = os1.merge(&os2);
+        assert!(merged.contains(&"a".to_string()));
+        assert!(merged.contains(&"b".to_string()));
+        assert_eq!(merged.len(), 2);
+    }
+
+    #[test]
+    fn test_orset_concurrent_add_remove() {
+        // This tests the "add-wins" semantics
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut os1: ORSet<String> = ORSet::new();
+        let mut os2: ORSet<String> = ORSet::new();
+
+        // Both start with "a" added by r1
+        os1.add("a".to_string(), r1);
+        os2 = os1.merge(&os2);
+
+        // Concurrent: r1 removes "a", r2 adds "a" again
+        os1.remove(&"a".to_string());
+        os2.add("a".to_string(), r2);
+
+        // After merge, "a" should exist (add-wins)
+        let merged = os1.merge(&os2);
+        assert!(merged.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn test_orset_apply_remove() {
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut os1: ORSet<String> = ORSet::new();
+        let mut os2: ORSet<String> = ORSet::new();
+
+        // r1 adds element
+        let tag = os1.add("a".to_string(), r1);
+
+        // Sync to os2
+        os2 = os1.merge(&os2);
+
+        // r2 adds same element (creates new tag)
+        os2.add("a".to_string(), r2);
+
+        // r1 removes element (only removes tag it knows about)
+        let removed_tags = os1.remove(&"a".to_string());
+
+        // Apply r1's remove to os2
+        os2.apply_remove(&"a".to_string(), &removed_tags);
+
+        // Element should still exist (r2's tag remains)
+        assert!(os2.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn test_orset_merge_commutative() {
+        let r1 = ReplicaId::new(1);
+        let r2 = ReplicaId::new(2);
+
+        let mut os1: ORSet<String> = ORSet::new();
+        let mut os2: ORSet<String> = ORSet::new();
+
+        os1.add("a".to_string(), r1);
+        os2.add("b".to_string(), r2);
+
+        let merged1 = os1.merge(&os2);
+        let merged2 = os2.merge(&os1);
+
+        assert_eq!(merged1.len(), merged2.len());
+        assert!(merged1.contains(&"a".to_string()));
+        assert!(merged1.contains(&"b".to_string()));
     }
 }

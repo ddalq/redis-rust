@@ -1,8 +1,13 @@
-pub mod lattice;
 pub mod config;
 pub mod gossip;
+pub mod gossip_router;
+pub mod hash_ring;
+pub mod lattice;
 pub mod state;
 
-pub use lattice::{LwwRegister, VectorClock, LamportClock, ReplicaId};
-pub use config::{ReplicationConfig, ConsistencyLevel};
-pub use state::{ReplicatedValue, ReplicationDelta};
+pub use config::{ConsistencyLevel, ReplicationConfig};
+pub use gossip::{GossipMessage, GossipState, RoutedMessage};
+pub use gossip_router::{GossipRouter, RoutingStats, RoutingTable};
+pub use hash_ring::{HashRing, VirtualNode};
+pub use lattice::{GCounter, GSet, LamportClock, LwwRegister, ORSet, PNCounter, ReplicaId, UniqueTag, VectorClock};
+pub use state::{CrdtValue, ReplicatedValue, ReplicationDelta};

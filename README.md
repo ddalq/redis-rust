@@ -93,12 +93,14 @@ Node 1                    Node 2                    Node 3
 
 | Operation | Throughput | Latency |
 |-----------|------------|---------|
-| PING | ~40,000 req/sec | 0.02 ms |
-| SET | ~38,000 req/sec | 0.03 ms |
-| GET | ~35,000 req/sec | 0.03 ms |
-| INCR | ~38,000 req/sec | 0.03 ms |
+| PING | 364,289 req/sec | 0.003 ms |
+| SET | 343,784 req/sec | 0.003 ms |
+| GET | 166,818 req/sec | 0.006 ms |
+| INCR | 314,598 req/sec | 0.003 ms |
 
-Expected with optimizations enabled. See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for details.
+*Benchmarked on Intel i9-11950H (8 cores/16 threads), 32GB RAM, Ubuntu 22.04*
+
+See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for full details and methodology.
 
 ## Testing
 

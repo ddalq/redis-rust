@@ -1,5 +1,5 @@
 use crate::replication::{ReplicaId, ReplicationConfig};
-use crate::replication::gossip::{GossipMessage, GossipState};
+use crate::replication::gossip::{GossipMessage, GossipState, RoutedMessage};
 use crate::replication::state::ReplicationDelta;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -7,8 +7,8 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
-use tokio::time::{interval, Duration};
-use tracing::{info, warn, error};
+use tokio::time::interval;
+use tracing::{debug, info, warn, error};
 
 pub type DeltaCallback = Arc<dyn Fn(Vec<ReplicationDelta>) + Send + Sync>;
 
@@ -92,6 +92,15 @@ impl GossipManager {
                         GossipMessage::DeltaBatch { deltas, .. } => {
                             delta_callback(deltas);
                         }
+                        GossipMessage::TargetedDelta { deltas, target_replica, source_replica, .. } => {
+                            // Targeted deltas are sent directly to the intended recipient
+                            // In selective gossip mode, we only receive deltas for keys we're responsible for
+                            info!(
+                                "Received targeted delta from replica {} (target: {}): {} deltas",
+                                source_replica.0, target_replica.0, deltas.len()
+                            );
+                            delta_callback(deltas);
+                        }
                         GossipMessage::Heartbeat { source_replica, epoch } => {
                             info!("Heartbeat from replica {} epoch {}", source_replica.0, epoch);
                         }
@@ -126,52 +135,85 @@ impl GossipManager {
     ) {
         let gossip_interval = config.gossip_interval();
         let mut ticker = interval(gossip_interval);
-        let replica_id = ReplicaId::new(config.replica_id);
         let peers = config.peers.clone();
+        let selective_mode = config.uses_selective_gossip();
+
+        // Build peer address map for selective routing
+        let peer_map: HashMap<ReplicaId, String> = peers.iter().enumerate().map(|(i, addr)| {
+            let peer_id = if (i as u64) >= config.replica_id {
+                (i as u64) + 2 // Skip our own ID
+            } else {
+                (i as u64) + 1
+            };
+            (ReplicaId::new(peer_id), addr.clone())
+        }).collect();
 
         info!(
-            "Starting gossip loop with {} peers, interval {:?}",
+            "Starting gossip loop with {} peers, interval {:?}, selective: {}",
             peers.len(),
-            gossip_interval
+            gossip_interval,
+            selective_mode
         );
 
         loop {
             ticker.tick().await;
 
             let deltas = collect_deltas();
-            
+
+            // Queue deltas and get routed messages
+            let routed_messages: Vec<RoutedMessage>;
             {
                 let mut state = gossip_state.write();
                 state.advance_epoch();
+                state.queue_deltas(deltas);
+                routed_messages = state.drain_outbound();
             }
 
-            if deltas.is_empty() {
+            if routed_messages.is_empty() {
                 continue;
             }
 
-            let epoch = gossip_state.read().epoch;
-            let msg = GossipMessage::new_delta_batch(replica_id, deltas, epoch);
-            let data = match msg.serialize() {
-                Ok(d) => d,
-                Err(e) => {
-                    error!("Failed to serialize gossip message: {}", e);
-                    continue;
-                }
-            };
+            // Send each routed message
+            for routed in routed_messages {
+                let data = match routed.message.serialize() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        error!("Failed to serialize gossip message: {}", e);
+                        continue;
+                    }
+                };
+                let framed_data = Self::frame_message(&data);
 
-            let framed_data = Self::frame_message(&data);
-            
-            for peer in &peers {
-                match TcpStream::connect(peer).await {
-                    Ok(mut stream) => {
-                        if let Err(e) = stream.write_all(&framed_data).await {
-                            warn!("Failed to send to peer {}: {}", peer, e);
+                match routed.target {
+                    Some(target_replica) => {
+                        // Targeted message: send to specific replica
+                        if let Some(addr) = peer_map.get(&target_replica) {
+                            Self::send_to_peer(addr, &framed_data).await;
+                        } else {
+                            debug!("No address for target replica {}", target_replica.0);
                         }
                     }
-                    Err(e) => {
-                        warn!("Failed to connect to peer {}: {}", peer, e);
+                    None => {
+                        // Broadcast message: send to all peers
+                        for peer_addr in &peers {
+                            Self::send_to_peer(peer_addr, &framed_data).await;
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    /// Send framed data to a peer address
+    async fn send_to_peer(addr: &str, framed_data: &[u8]) {
+        match TcpStream::connect(addr).await {
+            Ok(mut stream) => {
+                if let Err(e) = stream.write_all(framed_data).await {
+                    warn!("Failed to send to peer {}: {}", addr, e);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to connect to peer {}: {}", addr, e);
             }
         }
     }
