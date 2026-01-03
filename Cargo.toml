@@ -15,6 +15,12 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+crossbeam = "0.8"
+object-pool = "0.5"
+memchr = "2.7"
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.6"
 
 [dev-dependencies]
 criterion = "0.5"
@@ -46,6 +52,10 @@ path = "src/bin/maelstrom_kv.rs"
 [[bin]]
 name = "maelstrom-kv-replicated"
 path = "src/bin/maelstrom_kv_replicated.rs"
+
+[[bin]]
+name = "redis-server-optimized"
+path = "src/bin/server_optimized.rs"
 
 [lib]
 name = "redis_sim"

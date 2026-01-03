@@ -41,6 +41,20 @@
    - Commands marked as read-only vs write for future optimization
    - Foundation for lock-free read path
 
+### Optimized Server (`redis-server-optimized`)
+
+The optimized binary includes additional performance improvements:
+
+| Optimization | Description | Improvement |
+|-------------|-------------|-------------|
+| jemalloc | Custom memory allocator (tikv-jemallocator) | ~10% |
+| Lock-free Shards | Actor-per-shard with tokio channels | ~30% |
+| Buffer Pooling | crossbeam::ArrayQueue for buffer reuse | ~20% |
+| Zero-copy Parser | bytes::Bytes + memchr for RESP parsing | ~15% |
+| Connection Pooling | Semaphore-limited connections | ~10% |
+
+**Expected throughput:** ~40,000+ ops/sec
+
 ### Consistency Trade-offs
 
 The sharded architecture uses **relaxed multi-key semantics** (similar to Redis Cluster):

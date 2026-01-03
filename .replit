@@ -23,7 +23,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cargo run --bin redis-server --release"
+args = "cargo run --bin redis-server-optimized --release"
 waitForPort = 3000
 
 [[workflows.workflow]]

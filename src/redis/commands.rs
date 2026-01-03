@@ -1,5 +1,6 @@
 use super::data::*;
 use super::resp::RespValue;
+use super::resp_optimized::RespValueZeroCopy;
 use std::collections::HashMap;
 use crate::simulator::VirtualTime;
 
@@ -387,6 +388,222 @@ impl Command {
     fn extract_float(value: &RespValue) -> Result<f64, String> {
         match value {
             RespValue::BulkString(Some(data)) => {
+                let s = String::from_utf8_lossy(data);
+                s.parse::<f64>().map_err(|e| e.to_string())
+            }
+            _ => Err("Expected float".to_string()),
+        }
+    }
+
+    pub fn from_resp_zero_copy(value: &RespValueZeroCopy) -> Result<Command, String> {
+        match value {
+            RespValueZeroCopy::Array(Some(elements)) if !elements.is_empty() => {
+                let cmd_name = match &elements[0] {
+                    RespValueZeroCopy::BulkString(Some(data)) => {
+                        String::from_utf8_lossy(data).to_uppercase()
+                    }
+                    _ => return Err("Invalid command format".to_string()),
+                };
+
+                match cmd_name.as_str() {
+                    "PING" => Ok(Command::Ping),
+                    "INFO" => Ok(Command::Info),
+                    "FLUSHDB" => Ok(Command::FlushDb),
+                    "FLUSHALL" => Ok(Command::FlushAll),
+                    "GET" => {
+                        if elements.len() != 2 { return Err("GET requires 1 argument".to_string()); }
+                        Ok(Command::Get(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "SET" => {
+                        if elements.len() != 3 { return Err("SET requires 2 arguments".to_string()); }
+                        Ok(Command::Set(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                    }
+                    "SETEX" => {
+                        if elements.len() != 4 { return Err("SETEX requires 3 arguments".to_string()); }
+                        Ok(Command::SetEx(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64, Self::extract_sds_zc(&elements[3])?))
+                    }
+                    "SETNX" => {
+                        if elements.len() != 3 { return Err("SETNX requires 2 arguments".to_string()); }
+                        Ok(Command::SetNx(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                    }
+                    "DEL" => {
+                        if elements.len() != 2 { return Err("DEL requires 1 argument".to_string()); }
+                        Ok(Command::Del(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "EXISTS" => {
+                        if elements.len() < 2 { return Err("EXISTS requires at least 1 argument".to_string()); }
+                        Ok(Command::Exists(elements[1..].iter().map(Self::extract_string_zc).collect::<Result<Vec<_>, _>>()?))
+                    }
+                    "TYPE" => {
+                        if elements.len() != 2 { return Err("TYPE requires 1 argument".to_string()); }
+                        Ok(Command::TypeOf(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "KEYS" => {
+                        if elements.len() != 2 { return Err("KEYS requires 1 argument".to_string()); }
+                        Ok(Command::Keys(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "EXPIRE" => {
+                        if elements.len() != 3 { return Err("EXPIRE requires 2 arguments".to_string()); }
+                        Ok(Command::Expire(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                    }
+                    "EXPIREAT" => {
+                        if elements.len() != 3 { return Err("EXPIREAT requires 2 arguments".to_string()); }
+                        Ok(Command::ExpireAt(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                    }
+                    "PEXPIREAT" => {
+                        if elements.len() != 3 { return Err("PEXPIREAT requires 2 arguments".to_string()); }
+                        Ok(Command::PExpireAt(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                    }
+                    "TTL" => {
+                        if elements.len() != 2 { return Err("TTL requires 1 argument".to_string()); }
+                        Ok(Command::Ttl(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "PTTL" => {
+                        if elements.len() != 2 { return Err("PTTL requires 1 argument".to_string()); }
+                        Ok(Command::Pttl(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "PERSIST" => {
+                        if elements.len() != 2 { return Err("PERSIST requires 1 argument".to_string()); }
+                        Ok(Command::Persist(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "INCR" => {
+                        if elements.len() != 2 { return Err("INCR requires 1 argument".to_string()); }
+                        Ok(Command::Incr(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "DECR" => {
+                        if elements.len() != 2 { return Err("DECR requires 1 argument".to_string()); }
+                        Ok(Command::Decr(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "INCRBY" => {
+                        if elements.len() != 3 { return Err("INCRBY requires 2 arguments".to_string()); }
+                        Ok(Command::IncrBy(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                    }
+                    "DECRBY" => {
+                        if elements.len() != 3 { return Err("DECRBY requires 2 arguments".to_string()); }
+                        Ok(Command::DecrBy(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                    }
+                    "APPEND" => {
+                        if elements.len() != 3 { return Err("APPEND requires 2 arguments".to_string()); }
+                        Ok(Command::Append(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                    }
+                    "GETSET" => {
+                        if elements.len() != 3 { return Err("GETSET requires 2 arguments".to_string()); }
+                        Ok(Command::GetSet(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                    }
+                    "MGET" => {
+                        if elements.len() < 2 { return Err("MGET requires at least 1 argument".to_string()); }
+                        Ok(Command::MGet(elements[1..].iter().map(Self::extract_string_zc).collect::<Result<Vec<_>, _>>()?))
+                    }
+                    "MSET" => {
+                        if elements.len() < 3 || (elements.len() - 1) % 2 != 0 { return Err("MSET requires key-value pairs".to_string()); }
+                        let mut pairs = Vec::new();
+                        for i in (1..elements.len()).step_by(2) {
+                            pairs.push((Self::extract_string_zc(&elements[i])?, Self::extract_sds_zc(&elements[i + 1])?));
+                        }
+                        Ok(Command::MSet(pairs))
+                    }
+                    "LPUSH" => {
+                        if elements.len() < 3 { return Err("LPUSH requires key and values".to_string()); }
+                        let key = Self::extract_string_zc(&elements[1])?;
+                        let values = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        Ok(Command::LPush(key, values))
+                    }
+                    "RPUSH" => {
+                        if elements.len() < 3 { return Err("RPUSH requires key and values".to_string()); }
+                        let key = Self::extract_string_zc(&elements[1])?;
+                        let values = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        Ok(Command::RPush(key, values))
+                    }
+                    "LPOP" => {
+                        if elements.len() != 2 { return Err("LPOP requires 1 argument".to_string()); }
+                        Ok(Command::LPop(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "RPOP" => {
+                        if elements.len() != 2 { return Err("RPOP requires 1 argument".to_string()); }
+                        Ok(Command::RPop(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "LRANGE" => {
+                        if elements.len() != 4 { return Err("LRANGE requires 3 arguments".to_string()); }
+                        Ok(Command::LRange(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])?, Self::extract_integer_zc(&elements[3])?))
+                    }
+                    "SADD" => {
+                        if elements.len() < 3 { return Err("SADD requires key and members".to_string()); }
+                        let key = Self::extract_string_zc(&elements[1])?;
+                        let members = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        Ok(Command::SAdd(key, members))
+                    }
+                    "SMEMBERS" => {
+                        if elements.len() != 2 { return Err("SMEMBERS requires 1 argument".to_string()); }
+                        Ok(Command::SMembers(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "SISMEMBER" => {
+                        if elements.len() != 3 { return Err("SISMEMBER requires 2 arguments".to_string()); }
+                        Ok(Command::SIsMember(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                    }
+                    "HSET" => {
+                        if elements.len() != 4 { return Err("HSET requires 3 arguments".to_string()); }
+                        Ok(Command::HSet(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?, Self::extract_sds_zc(&elements[3])?))
+                    }
+                    "HGET" => {
+                        if elements.len() != 3 { return Err("HGET requires 2 arguments".to_string()); }
+                        Ok(Command::HGet(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                    }
+                    "HGETALL" => {
+                        if elements.len() != 2 { return Err("HGETALL requires 1 argument".to_string()); }
+                        Ok(Command::HGetAll(Self::extract_string_zc(&elements[1])?))
+                    }
+                    "ZADD" => {
+                        if elements.len() < 4 || (elements.len() - 2) % 2 != 0 { return Err("ZADD requires key and score-member pairs".to_string()); }
+                        let key = Self::extract_string_zc(&elements[1])?;
+                        let mut pairs = Vec::new();
+                        for i in (2..elements.len()).step_by(2) {
+                            pairs.push((Self::extract_float_zc(&elements[i])?, Self::extract_sds_zc(&elements[i + 1])?));
+                        }
+                        Ok(Command::ZAdd(key, pairs))
+                    }
+                    "ZRANGE" => {
+                        if elements.len() != 4 { return Err("ZRANGE requires 3 arguments".to_string()); }
+                        Ok(Command::ZRange(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])?, Self::extract_integer_zc(&elements[3])?))
+                    }
+                    "ZSCORE" => {
+                        if elements.len() != 3 { return Err("ZSCORE requires 2 arguments".to_string()); }
+                        Ok(Command::ZScore(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                    }
+                    _ => Ok(Command::Unknown(cmd_name)),
+                }
+            }
+            _ => Err("Invalid command format".to_string()),
+        }
+    }
+
+    fn extract_string_zc(value: &RespValueZeroCopy) -> Result<String, String> {
+        match value {
+            RespValueZeroCopy::BulkString(Some(data)) => Ok(String::from_utf8_lossy(data).to_string()),
+            _ => Err("Expected bulk string".to_string()),
+        }
+    }
+
+    fn extract_sds_zc(value: &RespValueZeroCopy) -> Result<SDS, String> {
+        match value {
+            RespValueZeroCopy::BulkString(Some(data)) => Ok(SDS::new(data.to_vec())),
+            _ => Err("Expected bulk string".to_string()),
+        }
+    }
+
+    fn extract_integer_zc(value: &RespValueZeroCopy) -> Result<isize, String> {
+        match value {
+            RespValueZeroCopy::BulkString(Some(data)) => {
+                let s = String::from_utf8_lossy(data);
+                s.parse::<isize>().map_err(|e| e.to_string())
+            }
+            RespValueZeroCopy::Integer(n) => Ok(*n as isize),
+            _ => Err("Expected integer".to_string()),
+        }
+    }
+
+    fn extract_float_zc(value: &RespValueZeroCopy) -> Result<f64, String> {
+        match value {
+            RespValueZeroCopy::BulkString(Some(data)) => {
                 let s = String::from_utf8_lossy(data);
                 s.parse::<f64>().map_err(|e| e.to_string())
             }
