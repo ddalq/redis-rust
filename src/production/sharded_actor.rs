@@ -8,63 +8,100 @@ use tokio::sync::{mpsc, oneshot};
 
 const NUM_SHARDS: usize = 16;
 
-pub struct ShardCommand {
-    cmd: Command,
-    virtual_time: VirtualTime,
-    response_tx: oneshot::Sender<RespValue>,
+#[derive(Debug)]
+pub enum ShardMessage {
+    Command {
+        cmd: Command,
+        virtual_time: VirtualTime,
+        response_tx: oneshot::Sender<RespValue>,
+    },
+    EvictExpired {
+        virtual_time: VirtualTime,
+        response_tx: oneshot::Sender<usize>,
+    },
 }
 
 pub struct ShardActor {
     executor: CommandExecutor,
-    rx: mpsc::UnboundedReceiver<ShardCommand>,
+    rx: mpsc::UnboundedReceiver<ShardMessage>,
+    shard_id: usize,
 }
 
 impl ShardActor {
-    fn new(rx: mpsc::UnboundedReceiver<ShardCommand>, simulation_start_epoch: i64) -> Self {
+    fn new(rx: mpsc::UnboundedReceiver<ShardMessage>, simulation_start_epoch: i64, shard_id: usize) -> Self {
+        debug_assert!(shard_id < NUM_SHARDS, "Shard ID {} out of bounds", shard_id);
         let mut executor = CommandExecutor::new();
         executor.set_simulation_start_epoch(simulation_start_epoch);
-        ShardActor { executor, rx }
+        ShardActor { executor, rx, shard_id }
     }
 
     async fn run(mut self) {
-        while let Some(shard_cmd) = self.rx.recv().await {
-            self.executor.set_time(shard_cmd.virtual_time);
-            let response = self.executor.execute(&shard_cmd.cmd);
-            let _ = shard_cmd.response_tx.send(response);
+        while let Some(msg) = self.rx.recv().await {
+            match msg {
+                ShardMessage::Command { cmd, virtual_time, response_tx } => {
+                    self.executor.set_time(virtual_time);
+                    let response = self.executor.execute(&cmd);
+                    let _ = response_tx.send(response);
+                }
+                ShardMessage::EvictExpired { virtual_time, response_tx } => {
+                    let evicted = self.executor.evict_expired_direct(virtual_time);
+                    let _ = response_tx.send(evicted);
+                }
+            }
         }
-    }
-
-    fn evict_expired(&mut self, virtual_time: VirtualTime) -> usize {
-        self.executor.evict_expired_direct(virtual_time)
     }
 }
 
 #[derive(Clone)]
 pub struct ShardHandle {
-    tx: mpsc::UnboundedSender<ShardCommand>,
+    tx: mpsc::UnboundedSender<ShardMessage>,
+    shard_id: usize,
 }
 
 impl ShardHandle {
+    #[inline]
     async fn execute(&self, cmd: Command, virtual_time: VirtualTime) -> RespValue {
         let (response_tx, response_rx) = oneshot::channel();
-        let shard_cmd = ShardCommand {
+        let msg = ShardMessage::Command {
             cmd,
             virtual_time,
             response_tx,
         };
-        
-        if self.tx.send(shard_cmd).is_err() {
-            return RespValue::Error("Shard unavailable".to_string());
+
+        if self.tx.send(msg).is_err() {
+            debug_assert!(false, "Shard {} channel closed unexpectedly", self.shard_id);
+            return RespValue::Error("ERR shard unavailable".to_string());
         }
-        
-        response_rx.await.unwrap_or_else(|_| RespValue::Error("Shard response failed".to_string()))
+
+        response_rx.await.unwrap_or_else(|_| {
+            debug_assert!(false, "Shard {} response channel dropped", self.shard_id);
+            RespValue::Error("ERR shard response failed".to_string())
+        })
+    }
+
+    #[inline]
+    async fn evict_expired(&self, virtual_time: VirtualTime) -> usize {
+        let (response_tx, response_rx) = oneshot::channel();
+        let msg = ShardMessage::EvictExpired {
+            virtual_time,
+            response_tx,
+        };
+
+        if self.tx.send(msg).is_err() {
+            return 0;
+        }
+
+        response_rx.await.unwrap_or(0)
     }
 }
 
+#[inline]
 fn hash_key(key: &str) -> usize {
     let mut hasher = DefaultHasher::new();
     key.hash(&mut hasher);
-    (hasher.finish() as usize) % NUM_SHARDS
+    let idx = (hasher.finish() as usize) % NUM_SHARDS;
+    debug_assert!(idx < NUM_SHARDS, "Hash produced invalid shard index");
+    idx
 }
 
 #[derive(Clone)]
@@ -77,39 +114,52 @@ impl ShardedActorState {
     pub fn new() -> Self {
         let epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time before UNIX epoch")
             .as_secs() as i64;
-        
-        let shards: [ShardHandle; NUM_SHARDS] = std::array::from_fn(|_| {
+
+        let shards: [ShardHandle; NUM_SHARDS] = std::array::from_fn(|shard_id| {
             let (tx, rx) = mpsc::unbounded_channel();
-            let actor = ShardActor::new(rx, epoch);
+            let actor = ShardActor::new(rx, epoch, shard_id);
             tokio::spawn(actor.run());
-            ShardHandle { tx }
+            ShardHandle { tx, shard_id }
         });
-        
+
         ShardedActorState {
             shards: Arc::new(shards),
             start_time: SystemTime::now(),
         }
     }
-    
+
+    #[inline]
     fn get_current_virtual_time(&self) -> VirtualTime {
-        let elapsed = self.start_time.elapsed().unwrap();
+        let elapsed = self.start_time.elapsed().expect("System time went backwards");
         VirtualTime::from_millis(elapsed.as_millis() as u64)
     }
-    
+
+    pub async fn evict_expired_all_shards(&self) -> usize {
+        let virtual_time = self.get_current_virtual_time();
+        let mut total = 0usize;
+
+        for shard in self.shards.iter() {
+            total = total.saturating_add(shard.evict_expired(virtual_time).await);
+        }
+
+        total
+    }
+
     pub async fn execute(&self, cmd: &Command) -> RespValue {
         let virtual_time = self.get_current_virtual_time();
-        
+
         match cmd {
             Command::Ping => RespValue::SimpleString("PONG".to_string()),
-            
+
             Command::Info => {
                 let info = format!(
                     "# Server\r\n\
-                     redis_mode:actor_sharded\r\n\
+                     redis_mode:tiger_style\r\n\
                      num_shards:{}\r\n\
-                     architecture:message_passing\r\n\
+                     architecture:actor_message_passing\r\n\
+                     allocator:jemalloc\r\n\
                      \r\n\
                      # Stats\r\n\
                      current_time_ms:{}\r\n",
@@ -118,7 +168,7 @@ impl ShardedActorState {
                 );
                 RespValue::BulkString(Some(info.into_bytes()))
             }
-            
+
             Command::FlushDb | Command::FlushAll => {
                 let mut futures = Vec::with_capacity(NUM_SHARDS);
                 for shard in self.shards.iter() {
@@ -129,13 +179,13 @@ impl ShardedActorState {
                 }
                 RespValue::SimpleString("OK".to_string())
             }
-            
+
             Command::Keys(pattern) => {
                 let mut futures = Vec::with_capacity(NUM_SHARDS);
                 for shard in self.shards.iter() {
                     futures.push(shard.execute(Command::Keys(pattern.clone()), virtual_time));
                 }
-                
+
                 let mut all_keys: Vec<RespValue> = Vec::new();
                 for future in futures {
                     if let RespValue::Array(Some(keys)) = future.await {
@@ -144,20 +194,20 @@ impl ShardedActorState {
                 }
                 RespValue::Array(Some(all_keys))
             }
-            
+
             Command::MGet(keys) => {
-                let mut futures: Vec<_> = keys.iter().map(|key| {
+                let futures: Vec<_> = keys.iter().map(|key| {
                     let shard_idx = hash_key(key);
                     self.shards[shard_idx].execute(Command::Get(key.clone()), virtual_time)
                 }).collect();
-                
+
                 let mut results = Vec::with_capacity(keys.len());
                 for future in futures {
                     results.push(future.await);
                 }
                 RespValue::Array(Some(results))
             }
-            
+
             Command::MSet(pairs) => {
                 let mut futures = Vec::with_capacity(pairs.len());
                 for (key, value) in pairs {
@@ -172,7 +222,7 @@ impl ShardedActorState {
                 }
                 RespValue::SimpleString("OK".to_string())
             }
-            
+
             Command::Exists(keys) => {
                 let mut futures = Vec::with_capacity(keys.len());
                 for key in keys {
@@ -182,19 +232,20 @@ impl ShardedActorState {
                         virtual_time,
                     ));
                 }
-                
+
                 let mut count = 0i64;
                 for future in futures {
                     if let RespValue::Integer(n) = future.await {
-                        count += n;
+                        count = count.saturating_add(n);
                     }
                 }
                 RespValue::Integer(count)
             }
-            
+
             _ => {
                 if let Some(key) = cmd.get_primary_key() {
                     let shard_idx = hash_key(key);
+                    debug_assert!(shard_idx < NUM_SHARDS, "Invalid shard index for key");
                     self.shards[shard_idx].execute(cmd.clone(), virtual_time).await
                 } else {
                     self.shards[0].execute(cmd.clone(), virtual_time).await

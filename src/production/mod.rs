@@ -1,20 +1,15 @@
-mod server;
 mod server_optimized;
-mod connection;
 mod connection_optimized;
 mod connection_pool;
-mod shared_state;
-mod sharded_state;
 mod sharded_actor;
 mod ttl_manager;
 mod replicated_state;
 mod gossip_manager;
 
-pub use server::ProductionRedisServer;
 pub use server_optimized::OptimizedRedisServer;
-pub use shared_state::SharedRedisState;
-pub use sharded_state::ShardedRedisState;
 pub use sharded_actor::ShardedActorState;
 pub use connection_pool::ConnectionPool;
 pub use replicated_state::ReplicatedShardedState;
 pub use gossip_manager::GossipManager;
+
+pub use server_optimized::OptimizedRedisServer as ProductionRedisServer;

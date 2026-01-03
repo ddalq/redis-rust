@@ -1,11 +1,13 @@
 use super::ShardedActorState;
 use super::connection_pool::BufferPoolAsync;
-use crate::redis::{Command, RespValue, RespCodec, RespValueZeroCopy};
-use bytes::{BytesMut, Bytes, BufMut};
+use crate::redis::{Command, RespValue, RespCodec};
+use bytes::{BytesMut, BufMut};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tracing::{info, warn, error};
+use tracing::{info, warn, error, debug};
+
+const MAX_BUFFER_SIZE: usize = 1024 * 1024;
 
 pub struct OptimizedConnectionHandler {
     stream: TcpStream,
@@ -17,6 +19,7 @@ pub struct OptimizedConnectionHandler {
 }
 
 impl OptimizedConnectionHandler {
+    #[inline]
     pub fn new(
         stream: TcpStream,
         state: ShardedActorState,
@@ -25,6 +28,7 @@ impl OptimizedConnectionHandler {
     ) -> Self {
         let buffer = buffer_pool.acquire();
         let write_buffer = buffer_pool.acquire();
+        debug_assert!(buffer.capacity() > 0, "Buffer pool returned zero-capacity buffer");
         OptimizedConnectionHandler {
             stream,
             state,
@@ -34,12 +38,12 @@ impl OptimizedConnectionHandler {
             buffer_pool,
         }
     }
-    
+
     pub async fn run(mut self) {
         info!("Client connected: {}", self.client_addr);
-        
+
         let mut read_buf = [0u8; 8192];
-        
+
         loop {
             match self.stream.read(&mut read_buf).await {
                 Ok(0) => {
@@ -47,51 +51,69 @@ impl OptimizedConnectionHandler {
                     break;
                 }
                 Ok(n) => {
+                    if self.buffer.len() + n > MAX_BUFFER_SIZE {
+                        error!("Buffer overflow from {}, closing connection", self.client_addr);
+                        Self::encode_error_into("buffer overflow", &mut self.write_buffer);
+                        let _ = self.stream.write_all(&self.write_buffer).await;
+                        break;
+                    }
+
                     self.buffer.extend_from_slice(&read_buf[..n]);
-                    
-                    while let Some(()) = self.try_execute_command().await {
-                        if let Err(e) = self.stream.write_all(&self.write_buffer).await {
-                            error!("Failed to write response: {}", e);
-                            break;
+
+                    loop {
+                        match self.try_execute_command().await {
+                            CommandResult::Executed => {
+                                if let Err(e) = self.stream.write_all(&self.write_buffer).await {
+                                    error!("Write failed to {}: {}", self.client_addr, e);
+                                    break;
+                                }
+                                self.write_buffer.clear();
+                            }
+                            CommandResult::NeedMoreData => break,
+                            CommandResult::ParseError(e) => {
+                                warn!("Parse error from {}: {}, draining buffer", self.client_addr, e);
+                                self.buffer.clear();
+                                Self::encode_error_into("protocol error", &mut self.write_buffer);
+                                let _ = self.stream.write_all(&self.write_buffer).await;
+                                self.write_buffer.clear();
+                                break;
+                            }
                         }
-                        self.write_buffer.clear();
                     }
                 }
                 Err(e) => {
-                    error!("Error reading from client {}: {}", self.client_addr, e);
+                    debug!("Read error from {}: {}", self.client_addr, e);
                     break;
                 }
             }
         }
-        
+
         self.buffer_pool.release(self.buffer);
         self.buffer_pool.release(self.write_buffer);
     }
-    
-    async fn try_execute_command(&mut self) -> Option<()> {
+
+    #[inline]
+    async fn try_execute_command(&mut self) -> CommandResult {
         match RespCodec::parse(&mut self.buffer) {
             Ok(Some(resp_value)) => {
                 match Command::from_resp_zero_copy(&resp_value) {
                     Ok(cmd) => {
                         let response = self.state.execute(&cmd).await;
                         Self::encode_resp_into(&response, &mut self.write_buffer);
-                        Some(())
+                        CommandResult::Executed
                     }
                     Err(e) => {
-                        warn!("Invalid command from {}: {}", self.client_addr, e);
                         Self::encode_error_into(&e, &mut self.write_buffer);
-                        Some(())
+                        CommandResult::Executed
                     }
                 }
             }
-            Ok(None) => None,
-            Err(e) => {
-                warn!("Parse error from {}: {}", self.client_addr, e);
-                None
-            }
+            Ok(None) => CommandResult::NeedMoreData,
+            Err(e) => CommandResult::ParseError(e),
         }
     }
 
+    #[inline]
     fn encode_resp_into(value: &RespValue, buf: &mut BytesMut) {
         match value {
             RespValue::SimpleString(s) => {
@@ -133,10 +155,17 @@ impl OptimizedConnectionHandler {
         }
     }
 
+    #[inline]
     fn encode_error_into(msg: &str, buf: &mut BytesMut) {
         buf.put_u8(b'-');
         buf.extend_from_slice(b"ERR ");
         buf.extend_from_slice(msg.as_bytes());
         buf.extend_from_slice(b"\r\n");
     }
+}
+
+enum CommandResult {
+    Executed,
+    NeedMoreData,
+    ParseError(String),
 }
