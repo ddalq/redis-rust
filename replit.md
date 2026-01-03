@@ -23,14 +23,14 @@ N/A (Backend project)
 
 ### Technical Implementations
 
-- **Production Server**:
-    - **Actor-Based Architecture**: Utilizes Tokio for concurrent connections, managing each client connection as an independent actor.
-    - **Sharding**: Employs a 16-shard keyspace partitioning for parallel command execution, significantly improving throughput (~60-70% improvement, achieving ~25k ops/sec).
-    - **Real-time TTL Expiration**: A background actor handles key expiration.
-    - **Thread-safe Shared State**: Achieved using `parking_lot::RwLock` for efficient and safe concurrent access to the sharded Redis state.
-    - **RESP Protocol**: Full implementation of the Redis Serialization Protocol over TCP sockets.
-    - **Command Set**: Supports 35+ Redis commands covering string operations, atomic counters, expiration, key management, lists, sets, hashes, and sorted sets.
-- **Optimized Production Server** (`redis-server-optimized`):
+- **Production Server** (Tiger Style, `redis-server-optimized`):
+    - **Tiger Style Principles**: Explicit over implicit, debug_assert! invariants, no silent failures, deterministic behavior
+    - **Actor-Based Architecture**: Tokio actors with lock-free message passing (ShardMessage enum)
+    - **Sharding**: 16-shard keyspace with actor-per-shard for lock-free parallel execution
+    - **TTL Manager Actor**: Background TtlManagerActor with explicit EvictExpired messages
+    - **RESP Protocol**: Zero-copy parser with explicit error handling (protocol errors drain buffer)
+    - **Command Set**: 35+ Redis commands with explicit error responses
+- **Performance Optimizations** (`redis-server-optimized`):
     - **jemalloc Allocator**: Custom memory allocator for reduced fragmentation (~10% improvement)
     - **Actor-per-Shard**: Lock-free message passing replaces RwLock (~30% improvement)
     - **Buffer Pooling**: `crossbeam::ArrayQueue` for buffer reuse (~20% improvement)
@@ -99,3 +99,21 @@ Run tests with: `./scripts/maelstrom_test.sh`
 Test results (verified):
 - Single-node linearizability: PASS
 - Multi-node (3 nodes) with replication: PASS
+
+## Recent Changes (January 2026)
+
+### Tiger Style Cleanup
+- Removed legacy files: `shared_state.rs`, `server.rs`, `connection.rs`, `sharded_state.rs`
+- Unified on optimized actor-based components
+- Added `ShardMessage` enum with explicit `Command` and `EvictExpired` variants
+- Implemented `TtlManagerActor` with actor-compatible TTL eviction
+- Added `debug_assert!` invariants for shard bounds, channel failures, buffer capacity
+- Explicit error handling: parse errors drain buffer and return protocol error
+- Buffer overflow protection with 1MB limit
+- All 14 unit tests pass; redis-cli integration verified
+
+Key production files:
+- `src/production/server_optimized.rs` - Main server with TTL manager spawn
+- `src/production/sharded_actor.rs` - Actor-per-shard with ShardMessage enum
+- `src/production/connection_optimized.rs` - Zero-copy connection handler
+- `src/production/ttl_manager.rs` - TtlManagerActor for key expiration
