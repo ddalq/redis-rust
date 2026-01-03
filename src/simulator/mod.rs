@@ -7,6 +7,7 @@ pub mod multi_node;
 pub mod crash;
 pub mod dst;
 pub mod dst_integration;
+pub mod partition_tests;
 
 pub use executor::{Simulation, SimulationConfig};
 pub use time::{VirtualTime, Duration};
@@ -16,6 +17,7 @@ pub use harness::{SimulationHarness, SimulatedRedisNode, ScenarioBuilder};
 pub use multi_node::{MultiNodeSimulation, TimestampedOperation, LinearizabilityResult, check_single_key_linearizability};
 pub use crash::{CrashSimulator, CrashConfig, CrashReason, NodeState, NodeSnapshot};
 pub use dst::{DSTSimulation, DSTConfig, BatchRunner, BatchResult, SimulationResult};
+pub use partition_tests::{PartitionConfig, PartitionTestResult, PartitionBatchResult, run_partition_test, run_partition_test_batch};
 
 use std::collections::{BinaryHeap, HashMap};
 use std::cmp::Ordering;
