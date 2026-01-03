@@ -1,0 +1,29 @@
+services:
+  # Official Redis 7.4 (latest stable)
+  redis-official:
+    image: redis:7.4-alpine
+    container_name: redis-official
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # Our Rust implementation (listens on port 3000)
+  redis-rust:
+    build:
+      context: ..
+      dockerfile: docker-benchmark/Dockerfile.redis-rust
+    container_name: redis-rust
+    ports:
+      - "3000:3000"
+    environment:
+      - RUST_LOG=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G

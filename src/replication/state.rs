@@ -177,6 +177,9 @@ pub struct ReplicatedValue {
     pub expiry_ms: Option<u64>,
     /// Lamport timestamp of last modification (for LWW values)
     pub timestamp: LamportClock,
+    /// Optional per-key replication factor override (None = use cluster default)
+    /// Used for hot keys that need higher replication
+    pub replication_factor: Option<u8>,
 }
 
 impl ReplicatedValue {
@@ -187,7 +190,19 @@ impl ReplicatedValue {
             vector_clock: None,
             expiry_ms: None,
             timestamp: LamportClock::new(replica_id),
+            replication_factor: None,
         }
+    }
+
+    /// Set a custom replication factor for this key (for hot keys)
+    pub fn with_replication_factor(mut self, rf: u8) -> Self {
+        self.replication_factor = Some(rf);
+        self
+    }
+
+    /// Get the replication factor, or the provided default if not set
+    pub fn get_replication_factor(&self, default_rf: u8) -> u8 {
+        self.replication_factor.unwrap_or(default_rf)
     }
 
     /// Create a new ReplicatedValue with a specific CRDT type
@@ -197,6 +212,7 @@ impl ReplicatedValue {
             vector_clock: None,
             expiry_ms: None,
             timestamp: LamportClock::new(replica_id),
+            replication_factor: None,
         }
     }
 
@@ -207,6 +223,7 @@ impl ReplicatedValue {
             vector_clock: None,
             expiry_ms: None,
             timestamp,
+            replication_factor: None,
         }
     }
 
@@ -250,12 +267,19 @@ impl ReplicatedValue {
             (None, None) => None,
         };
         let merged_timestamp = self.timestamp.merge(&other.timestamp);
+        // For RF, take the higher value (more replicas = safer)
+        let merged_rf = match (self.replication_factor, other.replication_factor) {
+            (Some(rf1), Some(rf2)) => Some(rf1.max(rf2)),
+            (Some(rf), None) | (None, Some(rf)) => Some(rf),
+            (None, None) => None,
+        };
 
         ReplicatedValue {
             crdt: merged_crdt,
             vector_clock: merged_vc,
             expiry_ms: merged_expiry,
             timestamp: merged_timestamp,
+            replication_factor: merged_rf,
         }
     }
 

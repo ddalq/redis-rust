@@ -8,6 +8,7 @@ pub mod crash;
 pub mod dst;
 pub mod dst_integration;
 pub mod partition_tests;
+pub mod connection;
 
 pub use executor::{Simulation, SimulationConfig};
 pub use time::{VirtualTime, Duration};
@@ -18,6 +19,7 @@ pub use multi_node::{MultiNodeSimulation, TimestampedOperation, LinearizabilityR
 pub use crash::{CrashSimulator, CrashConfig, CrashReason, NodeState, NodeSnapshot};
 pub use dst::{DSTSimulation, DSTConfig, BatchRunner, BatchResult, SimulationResult};
 pub use partition_tests::{PartitionConfig, PartitionTestResult, PartitionBatchResult, run_partition_test, run_partition_test_batch};
+pub use connection::{SimulatedConnection, SimulatedReadBuffer, SimulatedWriteBuffer, PipelineSimulator, PipelineResult, ExecutionRecord};
 
 use std::collections::{BinaryHeap, HashMap};
 use std::cmp::Ordering;

@@ -113,12 +113,20 @@ impl HashRing {
 
     /// Get the N nodes responsible for this key (in preference order)
     pub fn get_replicas(&self, key: &str) -> Vec<ReplicaId> {
+        self.get_replicas_with_rf(key, self.replication_factor)
+    }
+
+    /// Get nodes responsible for this key with custom replication factor
+    ///
+    /// This allows hot keys to have higher RF than normal keys.
+    /// The RF is capped at the number of physical nodes.
+    pub fn get_replicas_with_rf(&self, key: &str, rf: usize) -> Vec<ReplicaId> {
         if self.ring.is_empty() {
             return vec![];
         }
 
         let key_pos = Self::hash_key(key);
-        let n = self.replication_factor.min(self.physical_nodes.len());
+        let n = rf.min(self.physical_nodes.len());
 
         // Binary search for first position >= key_pos
         let start_idx = match self.ring.binary_search_by_key(&key_pos, |(pos, _)| *pos) {
@@ -145,6 +153,11 @@ impl HashRing {
         }
 
         replicas
+    }
+
+    /// Check if this node should store the key with custom RF
+    pub fn is_responsible_with_rf(&self, key: &str, node: ReplicaId, rf: usize) -> bool {
+        self.get_replicas_with_rf(key, rf).contains(&node)
     }
 
     /// Check if this node should store the key
@@ -392,5 +405,49 @@ mod tests {
         assert_eq!(replicas.len(), 1);
         assert_eq!(replicas[0], ReplicaId::new(1));
         assert!(ring.is_responsible("key", ReplicaId::new(1)));
+    }
+
+    #[test]
+    fn test_per_key_replication_factor() {
+        let nodes: Vec<_> = (1..=5).map(|i| ReplicaId::new(i)).collect();
+        let ring = HashRing::new(nodes, 50, 3); // Default RF=3
+
+        // Normal key gets RF=3
+        let normal_replicas = ring.get_replicas("normal_key");
+        assert_eq!(normal_replicas.len(), 3);
+
+        // Hot key can get RF=5
+        let hot_replicas = ring.get_replicas_with_rf("hot_key", 5);
+        assert_eq!(hot_replicas.len(), 5);
+
+        // All replicas should be unique
+        let unique: HashSet<_> = hot_replicas.iter().collect();
+        assert_eq!(unique.len(), 5);
+
+        // RF > node count is capped
+        let over_replicas = ring.get_replicas_with_rf("key", 10);
+        assert_eq!(over_replicas.len(), 5); // Capped at 5 nodes
+    }
+
+    #[test]
+    fn test_is_responsible_with_rf() {
+        let nodes: Vec<_> = (1..=5).map(|i| ReplicaId::new(i)).collect();
+        let ring = HashRing::new(nodes, 50, 3);
+
+        // With higher RF, more nodes become responsible
+        let responsible_rf3: Vec<_> = (1..=5)
+            .filter(|&id| ring.is_responsible("key", ReplicaId::new(id)))
+            .collect();
+        let responsible_rf5: Vec<_> = (1..=5)
+            .filter(|&id| ring.is_responsible_with_rf("key", ReplicaId::new(id), 5))
+            .collect();
+
+        assert_eq!(responsible_rf3.len(), 3);
+        assert_eq!(responsible_rf5.len(), 5);
+
+        // RF3 nodes should be subset of RF5 nodes
+        for id in &responsible_rf3 {
+            assert!(responsible_rf5.contains(id));
+        }
     }
 }

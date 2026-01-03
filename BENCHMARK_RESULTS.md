@@ -5,7 +5,7 @@
 **Server:** Tiger Style Redis Server (Actor-per-Shard Architecture)
 **Binary:** `redis-server-optimized`
 **Port:** 3000
-**Shards:** 16 (lock-free actor-per-shard)
+**Shards:** Dynamic (default: num_cpus)
 **Date:** January 3, 2026
 
 ### System Configuration
@@ -18,7 +18,48 @@
 | Rust | 1.87.0-nightly (f9e0239a7 2025-03-04) |
 | Cargo | 1.87.0-nightly (2622e844b 2025-02-28) |
 
-## Performance Summary
+## Fair Comparison: Docker Benchmark vs Official Redis 7.4
+
+To ensure a fair comparison, we run both servers in identical Docker containers with resource limits.
+
+### Docker Configuration
+
+| Setting | Value |
+|---------|-------|
+| CPU Limit | 2 cores per container |
+| Memory Limit | 1GB per container |
+| Network | Host networking |
+| Requests | 100,000 |
+| Clients | 50 concurrent |
+| Pipeline | 1 (non-pipelined) |
+| Data Size | 64 bytes |
+
+### Non-Pipelined Performance (Pipeline=1)
+
+| Operation | Official Redis 7.4 | Rust Implementation | Relative |
+|-----------|-------------------|---------------------|----------|
+| SET | 78,802 req/sec | 76,687 req/sec | **97%** |
+| GET | 80,580 req/sec | 76,278 req/sec | **95%** |
+| INCR | 79,554 req/sec | 83,542 req/sec | **105%** |
+
+**Conclusion:** Our implementation achieves **95-105% of Redis 7.4 performance** on single operations.
+
+### Pipelined Performance (Pipeline=16)
+
+| Operation | Official Redis 7.4 | Rust Implementation | Relative |
+|-----------|-------------------|---------------------|----------|
+| SET | 793,650 req/sec | **900,900 req/sec** | **113%** |
+| GET | 769,230 req/sec | **1,030,927 req/sec** | **134%** |
+
+**Result:** Our implementation is **13-34% FASTER than Redis 7.4** on pipelined workloads!
+
+**Why we're faster on pipelining:**
+1. Batched response flushing (single syscall for all responses)
+2. TCP_NODELAY enabled for lower latency
+3. Lock-free actor architecture handles concurrent requests efficiently
+4. Zero-copy RESP parsing with `bytes::Bytes`
+
+## Local Benchmark (Single Machine, No Resource Limits)
 
 ### Optimized Server (`redis-server-optimized`)
 
@@ -30,9 +71,7 @@
 | INCR | 314,598 req/sec | 0.003 ms | Atomic counter |
 | MSET (5 keys) | 75,043 req/sec | 0.013 ms | Multi-key write |
 
-**Benchmark configuration:** 5,000 requests per test, 25 concurrent clients
-
-**Peak aggregate throughput:** ~364,000 ops/sec
+**Note:** Local benchmarks run without resource constraints and networking overhead. Docker benchmarks provide a fairer comparison.
 
 ### Performance Optimization Stack
 
@@ -50,16 +89,8 @@
 |---------|-------------|------------|------------|
 | v1 (baseline) | Single Lock | ~15,000 req/sec | Initial implementation |
 | v2 (sharded) | 16 Shards + RwLock | ~25,000 req/sec | +67% from sharding |
-| v3 (optimized) | Actor-per-Shard | ~364,000 req/sec | +1,356% from lock-free + optimizations |
-
-### Tiger Style Engineering Impact
-
-| Principle | Implementation | Effect |
-|-----------|----------------|--------|
-| Explicit Messages | `ShardMessage::Command`, `ShardMessage::EvictExpired` | Clear control flow |
-| Assertions | `debug_assert!` for shard bounds, channels | Catches bugs early |
-| No Silent Failures | Parse errors drain buffer, return protocol error | Explicit errors |
-| Deterministic | VirtualTime in simulation matches production | Test confidence |
+| v3 (optimized) | Actor-per-Shard | ~80,000 req/sec | Lock-free design |
+| v4 (fair test) | Docker constrained | ~80,000 req/sec | Matches Redis 7.4 |
 
 ## Architecture Details
 
@@ -70,30 +101,17 @@ Client Connection
        |
   [Connection Handler]
        |
-  hash(key) % 16
+  hash(key) % num_shards
        |
-  [ShardActor 0..15]  ← tokio::mpsc channels (lock-free)
+  [ShardActor 0..N]  <-- tokio::mpsc channels (lock-free)
        |
   [CommandExecutor]
 ```
 
 - **Lock-Free**: No `RwLock` contention between shards
+- **Dynamic Shards**: Runtime-configurable shard count
 - **Message Passing**: Explicit `ShardMessage` enum routes commands
 - **TTL Manager**: Separate actor sends `EvictExpired` messages
-
-### Buffer Pooling
-
-```
-[BufferPoolAsync]
-       |
-  [crossbeam::ArrayQueue<BytesMut>]
-       |
-  acquire() / release() per connection
-```
-
-- **Reuse**: Buffers returned to pool instead of dropped
-- **Capacity**: 512 pre-allocated buffers
-- **Size**: 8KB default buffer size
 
 ### Zero-Copy RESP Parser
 
@@ -111,108 +129,123 @@ Client Connection
 - **Fast Scanning**: `memchr` SIMD-optimized byte search
 - **Incremental**: Handles partial reads efficiently
 
-## Consistency Trade-offs
+## Comparison with Official Redis 7.4
 
-The sharded architecture uses **relaxed multi-key semantics** (similar to Redis Cluster):
-
-- **Single-key operations:** Fully atomic and consistent
-- **Multi-key operations (MSET, MGET, EXISTS):** Each key processed independently
-  - No cross-shard atomicity guarantees
-  - Acceptable for caching workloads
-
-## Comparison with Official Redis
-
-| Metric | This Implementation | Official Redis | Ratio |
-|--------|---------------------|----------------|-------|
-| Throughput (PING) | 364,289 ops/sec | ~100,000 ops/sec | 364% |
-| Throughput (SET) | 343,784 ops/sec | ~100,000 ops/sec | 344% |
-| Throughput (GET) | 166,818 ops/sec | ~100,000 ops/sec | 167% |
-| Latency | 0.003-0.006 ms | ~0.02 ms | 3-6x faster |
-| Memory Safety | Rust guarantees | Manual C | Safer |
-| Testability | Deterministic simulator | Unit tests | Better |
-
-### Why the Improvement?
-
-1. **Multi-actor vs Single-threaded**: 16-shard actor architecture enables parallel execution
-2. **Lock-free design**: Tokio channels eliminate lock contention
-3. **Zero-copy parsing**: `bytes::Bytes` + `memchr` minimizes allocations
-4. **jemalloc**: Reduced memory fragmentation under load
+| Feature | Official Redis 7.4 | This Implementation | Notes |
+|---------|-------------------|---------------------|-------|
+| **Performance (SET P=1)** | 78,802 req/sec | 76,687 req/sec | 97% of Redis |
+| **Performance (GET P=1)** | 80,580 req/sec | 76,278 req/sec | 95% of Redis |
+| **Performance (INCR)** | 79,554 req/sec | 83,542 req/sec | 105% of Redis |
+| **Pipelining SET (P=16)** | 793,650 req/sec | **900,900 req/sec** | **113% - FASTER** |
+| **Pipelining GET (P=16)** | 769,230 req/sec | **1,030,927 req/sec** | **134% - FASTER** |
+| Persistence (RDB/AOF) | Yes | No | Trade-off |
+| Clustering | Redis Cluster | Anna-style CRDT | Different model |
+| Consistency | Strong (single-leader) | Eventual/Causal | Trade-off |
+| Pub/Sub | Yes | No | Not implemented |
+| Lua Scripting | Yes | No | Not implemented |
+| Memory Safety | Manual C | Rust guarantees | Safer |
+| Deterministic Testing | No | DST framework | Better testability |
+| Hot Key Detection | Manual | Automatic | Better |
 
 ### Trade-offs
 
-- **Multi-key atomicity**: No cross-shard transactions (like Redis Cluster)
-- **Memory overhead**: Actor channels consume additional memory
-- **Complexity**: Actor model more complex than single-threaded
+**What we sacrifice:**
+- Persistence (RDB/AOF)
+- Pub/Sub, Streams, Lua scripting
+- Strong consistency in multi-node
+
+**What we gain:**
+- **FASTER pipelining** (13-34% faster than Redis 7.4)
+- Memory safety via Rust
+- Coordination-free replication (Anna-style)
+- Deterministic simulation testing
+- Automatic hot key detection
+- Configurable consistency (eventual/causal)
 
 ## Replication Performance
 
 | Mode | Throughput | Notes |
 |------|------------|-------|
-| Single-node | ~364,000 req/sec | No replication overhead |
-| Replicated (3 nodes) | ~290,000 req/sec (est.) | With gossip synchronization |
+| Single-node | ~80,000 req/sec | No replication overhead |
+| Replicated (3 nodes, eventual) | ~64,000 req/sec (est.) | With gossip synchronization |
 | Replication Overhead | ~20% | Delta capture + gossip |
 
 ### Replication Features
 
 - **Coordination-free**: No consensus protocol for writes
 - **Conflict Resolution**: LWW registers with Lamport clocks
-- **Eventual Consistency**: CRDT-based convergence
+- **Consistency Modes**: Eventual (LWW) or Causal (vector clocks)
 - **Gossip Interval**: 100ms (configurable)
+- **Hot Key Detection**: Automatic RF increase for high-traffic keys
+- **Anti-Entropy**: Merkle tree-based consistency verification
 
 ## Correctness Testing
 
-### Test Suite (22 tests)
+### Test Suite (175 tests)
 
 | Category | Tests | Coverage |
 |----------|-------|----------|
-| RESP Parser | 6 | Protocol parsing |
-| Command Parser | 4 | Command recognition |
-| Replication | 4 | CRDT lattice operations |
-| Simulation | 8 | Deterministic testing |
-
-### Simulation Tests (FDB/TigerBeetle Style)
-
-| Test | Purpose |
-|------|---------|
-| `test_basic_set_get` | Baseline operations |
-| `test_ttl_expiration_with_fast_forward` | Virtual time TTL |
-| `test_ttl_boundary_race` | Edge case at expiration |
-| `test_concurrent_increments` | Multi-client ordering |
-| `test_deterministic_replay` | Reproducibility |
-| `test_buggify_chaos` | Probabilistic faults |
-| `test_persist_cancels_expiration` | PERSIST behavior |
-| `test_multi_seed_invariants` | 100 seeds validation |
+| Unit Tests | 138 | RESP parsing, commands, data structures |
+| Eventual Consistency | 9 | CRDT convergence, partition healing |
+| Causal Consistency | 10 | Vector clocks, read-your-writes |
+| DST/Simulation | 5 | Multi-seed chaos testing |
+| Anti-Entropy | 8 | Merkle tree sync, split-brain |
+| Hot Key Detection | 5 | Adaptive replication |
 
 ### Maelstrom/Jepsen Results
 
-| Test | Nodes | Result |
-|------|-------|--------|
-| Linearizability (lin-kv) | 1 | PASS |
-| Replication Convergence | 3 | PASS |
+| Test | Nodes | Result | Notes |
+|------|-------|--------|-------|
+| Linearizability (lin-kv) | 1 | **PASS** | Single-node is linearizable |
+| Linearizability (lin-kv) | 3 | **FAIL** | Expected: eventual consistency |
+| Linearizability (lin-kv) | 5 | **FAIL** | Expected: eventual consistency |
+
+**Note:** Multi-node linearizability tests FAIL by design. We use Anna-style eventual consistency, not Raft/Paxos consensus.
 
 ## Running Benchmarks
+
+### Docker Benchmark (Recommended for Fair Comparison)
+
+```bash
+cd docker-benchmark
+./run-benchmarks.sh
+```
+
+### Local Benchmark
 
 ```bash
 # Run optimized server
 cargo run --bin redis-server-optimized --release
 
-# Connect with redis-cli
-redis-cli -p 3000
+# Run internal benchmarks
+cargo run --bin benchmark --release
+```
 
-# Run unit tests
+### Run Tests
+
+```bash
+# All tests (175)
+cargo test --all
+
+# Unit tests only (138)
 cargo test --lib
-
-# Run Maelstrom tests
-./scripts/maelstrom_test.sh
 ```
 
 ## Conclusion
 
 The Tiger Style Redis server demonstrates:
 
-- **364,000+ ops/sec** peak throughput (outperforming single-threaded Redis by 3.6x)
+- **95-105% of Redis 7.4 performance** on single operations
+- **113-134% FASTER than Redis 7.4** on pipelined workloads
+- **1,030,927 req/sec peak throughput** (pipelined GET)
 - **Sub-millisecond latency** (0.003-0.006 ms average)
 - **Memory-safe** Rust implementation with no data races
 - **Deterministic testability** via FoundationDB-style simulation
-- **Linearizability verified** via Maelstrom/Jepsen testing
-- **Production-ready** for web caching, session storage, rate limiting
+- **Single-node linearizability verified** via Maelstrom/Jepsen testing
+- **175 tests** covering consistency, replication, and chaos scenarios
+
+### Known Limitations
+
+1. **No persistence**: In-memory only (acceptable for caching)
+2. **No pub/sub**: Not implemented
+3. **Multi-node consistency**: Eventual, not linearizable (by design)

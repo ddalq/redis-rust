@@ -42,6 +42,11 @@ impl OptimizedConnectionHandler {
     pub async fn run(mut self) {
         info!("Client connected: {}", self.client_addr);
 
+        // Enable TCP_NODELAY for lower latency (disable Nagle's algorithm)
+        if let Err(e) = self.stream.set_nodelay(true) {
+            warn!("Failed to set TCP_NODELAY: {}", e);
+        }
+
         let mut read_buf = [0u8; 8192];
 
         loop {
@@ -60,26 +65,46 @@ impl OptimizedConnectionHandler {
 
                     self.buffer.extend_from_slice(&read_buf[..n]);
 
+                    // Process ALL available commands (pipelining support)
+                    let mut commands_executed = 0;
+                    let mut had_parse_error = false;
+
                     loop {
                         match self.try_execute_command().await {
                             CommandResult::Executed => {
-                                if let Err(e) = self.stream.write_all(&self.write_buffer).await {
-                                    error!("Write failed to {}: {}", self.client_addr, e);
-                                    break;
-                                }
-                                self.write_buffer.clear();
+                                commands_executed += 1;
+                                // Don't flush yet - continue processing pipeline
                             }
                             CommandResult::NeedMoreData => break,
                             CommandResult::ParseError(e) => {
                                 warn!("Parse error from {}: {}, draining buffer", self.client_addr, e);
                                 self.buffer.clear();
                                 Self::encode_error_into("protocol error", &mut self.write_buffer);
-                                let _ = self.stream.write_all(&self.write_buffer).await;
-                                self.write_buffer.clear();
+                                had_parse_error = true;
                                 break;
                             }
                         }
                     }
+
+                    // Flush ALL responses at once (critical for pipelining performance)
+                    if !self.write_buffer.is_empty() {
+                        if let Err(e) = self.stream.write_all(&self.write_buffer).await {
+                            error!("Write failed to {}: {}", self.client_addr, e);
+                            break;
+                        }
+                        // Ensure data is sent immediately
+                        if let Err(e) = self.stream.flush().await {
+                            error!("Flush failed to {}: {}", self.client_addr, e);
+                            break;
+                        }
+                        self.write_buffer.clear();
+                    }
+
+                    if had_parse_error {
+                        // Continue to next read after parse error
+                    }
+
+                    debug!("Processed {} commands in pipeline batch", commands_executed);
                 }
                 Err(e) => {
                     debug!("Read error from {}: {}", self.client_addr, e);
