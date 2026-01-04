@@ -93,6 +93,137 @@ mod command_parser_tests {
     use bytes::Bytes;
 
     #[test]
+    fn test_zrevrange_without_scores() {
+        let old_resp = RespValue::Array(Some(vec![
+            RespValue::BulkString(Some(b"ZREVRANGE".to_vec())),
+            RespValue::BulkString(Some(b"myzset".to_vec())),
+            RespValue::BulkString(Some(b"0".to_vec())),
+            RespValue::BulkString(Some(b"-1".to_vec())),
+        ]));
+        let new_resp = RespValueZeroCopy::Array(Some(vec![
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"ZREVRANGE"))),
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"myzset"))),
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"0"))),
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"-1"))),
+        ]));
+
+        let old_cmd = Command::from_resp(&old_resp).unwrap();
+        let new_cmd = Command::from_resp_zero_copy(&new_resp).unwrap();
+
+        match (old_cmd, new_cmd) {
+            (Command::ZRevRange(k1, s1, e1, ws1), Command::ZRevRange(k2, s2, e2, ws2)) => {
+                assert_eq!(k1, k2);
+                assert_eq!(k1, "myzset");
+                assert_eq!(s1, s2);
+                assert_eq!(s1, 0);
+                assert_eq!(e1, e2);
+                assert_eq!(e1, -1);
+                assert!(!ws1);
+                assert!(!ws2);
+            }
+            _ => panic!("Commands don't match"),
+        }
+    }
+
+    #[test]
+    fn test_zrevrange_with_scores() {
+        let old_resp = RespValue::Array(Some(vec![
+            RespValue::BulkString(Some(b"ZREVRANGE".to_vec())),
+            RespValue::BulkString(Some(b"leaderboard".to_vec())),
+            RespValue::BulkString(Some(b"0".to_vec())),
+            RespValue::BulkString(Some(b"9".to_vec())),
+            RespValue::BulkString(Some(b"WITHSCORES".to_vec())),
+        ]));
+        let new_resp = RespValueZeroCopy::Array(Some(vec![
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"ZREVRANGE"))),
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"leaderboard"))),
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"0"))),
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"9"))),
+            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"WITHSCORES"))),
+        ]));
+
+        let old_cmd = Command::from_resp(&old_resp).unwrap();
+        let new_cmd = Command::from_resp_zero_copy(&new_resp).unwrap();
+
+        match (old_cmd, new_cmd) {
+            (Command::ZRevRange(k1, s1, e1, ws1), Command::ZRevRange(k2, s2, e2, ws2)) => {
+                assert_eq!(k1, k2);
+                assert_eq!(k1, "leaderboard");
+                assert_eq!(s1, 0);
+                assert_eq!(e1, 9);
+                assert!(ws1);
+                assert!(ws2);
+            }
+            _ => panic!("Commands don't match"),
+        }
+    }
+
+    #[test]
+    fn test_zrevrange_case_insensitive_withscores() {
+        // Test lowercase withscores
+        let resp = RespValue::Array(Some(vec![
+            RespValue::BulkString(Some(b"ZREVRANGE".to_vec())),
+            RespValue::BulkString(Some(b"key".to_vec())),
+            RespValue::BulkString(Some(b"0".to_vec())),
+            RespValue::BulkString(Some(b"-1".to_vec())),
+            RespValue::BulkString(Some(b"withscores".to_vec())),
+        ]));
+
+        let cmd = Command::from_resp(&resp).unwrap();
+        match cmd {
+            Command::ZRevRange(_, _, _, with_scores) => {
+                assert!(with_scores);
+            }
+            _ => panic!("Expected ZRevRange"),
+        }
+    }
+
+    #[test]
+    fn test_zrevrange_negative_indices() {
+        let resp = RespValue::Array(Some(vec![
+            RespValue::BulkString(Some(b"ZREVRANGE".to_vec())),
+            RespValue::BulkString(Some(b"mykey".to_vec())),
+            RespValue::BulkString(Some(b"-3".to_vec())),
+            RespValue::BulkString(Some(b"-1".to_vec())),
+        ]));
+
+        let cmd = Command::from_resp(&resp).unwrap();
+        match cmd {
+            Command::ZRevRange(key, start, stop, _) => {
+                assert_eq!(key, "mykey");
+                assert_eq!(start, -3);
+                assert_eq!(stop, -1);
+            }
+            _ => panic!("Expected ZRevRange"),
+        }
+    }
+
+    #[test]
+    fn test_hset_multi_field() {
+        let resp = RespValue::Array(Some(vec![
+            RespValue::BulkString(Some(b"HSET".to_vec())),
+            RespValue::BulkString(Some(b"myhash".to_vec())),
+            RespValue::BulkString(Some(b"field1".to_vec())),
+            RespValue::BulkString(Some(b"value1".to_vec())),
+            RespValue::BulkString(Some(b"field2".to_vec())),
+            RespValue::BulkString(Some(b"value2".to_vec())),
+        ]));
+
+        let cmd = Command::from_resp(&resp).unwrap();
+        match cmd {
+            Command::HSet(key, pairs) => {
+                assert_eq!(key, "myhash");
+                assert_eq!(pairs.len(), 2);
+                assert_eq!(pairs[0].0.to_string(), "field1");
+                assert_eq!(pairs[0].1.to_string(), "value1");
+                assert_eq!(pairs[1].0.to_string(), "field2");
+                assert_eq!(pairs[1].1.to_string(), "value2");
+            }
+            _ => panic!("Expected HSet"),
+        }
+    }
+
+    #[test]
     fn test_ping_from_both_parsers() {
         let old_resp = RespValue::Array(Some(vec![
             RespValue::BulkString(Some(b"PING".to_vec()))

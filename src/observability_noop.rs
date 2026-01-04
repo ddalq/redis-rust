@@ -2,8 +2,55 @@
 //!
 //! Zero-sized types that compile away completely when datadog feature is disabled.
 //! All methods are marked `#[inline(always)]` to ensure zero overhead.
+//!
+//! Includes DST-compatible MetricsRecorder trait and implementations.
 
+use std::sync::Arc;
 use std::time::Instant;
+
+// ============================================================================
+// MetricsRecorder Trait (DST-compatible)
+// ============================================================================
+
+/// Trait for recording metrics - enables DST-compatible observability
+pub trait MetricsRecorder: Send + Sync + 'static {
+    fn incr(&self, name: &str, tags: &[&str]);
+    fn histogram(&self, name: &str, value: f64, tags: &[&str]);
+    fn gauge(&self, name: &str, value: f64, tags: &[&str]);
+    fn timing(&self, name: &str, duration_ms: f64, tags: &[&str]);
+    fn record_command(&self, _command: &str, _duration_ms: f64, _success: bool) {}
+    fn record_connection(&self, _event: &str) {}
+    fn set_connections(&self, _count: usize) {}
+    fn record_ttl_eviction(&self, _count: usize) {}
+}
+
+/// Arc wrapper for trait object usage
+pub type SharedMetrics = Arc<dyn MetricsRecorder>;
+
+/// Create a no-op metrics recorder
+#[inline(always)]
+pub fn noop_metrics() -> SharedMetrics {
+    Arc::new(NoopMetrics)
+}
+
+/// No-op metrics - implements MetricsRecorder
+#[derive(Clone, Copy, Default)]
+pub struct NoopMetrics;
+
+impl MetricsRecorder for NoopMetrics {
+    #[inline(always)]
+    fn incr(&self, _name: &str, _tags: &[&str]) {}
+    #[inline(always)]
+    fn histogram(&self, _name: &str, _value: f64, _tags: &[&str]) {}
+    #[inline(always)]
+    fn gauge(&self, _name: &str, _value: f64, _tags: &[&str]) {}
+    #[inline(always)]
+    fn timing(&self, _name: &str, _duration_ms: f64, _tags: &[&str]) {}
+}
+
+// ============================================================================
+// Legacy Metrics API (backward compatible)
+// ============================================================================
 
 /// No-op metrics client - compiles to nothing
 #[derive(Clone, Copy, Default)]
@@ -49,6 +96,18 @@ impl Metrics {
     pub fn timer(&self, _name: &'static str) -> Timer {
         Timer { _start: Instant::now() }
     }
+}
+
+// Implement MetricsRecorder for legacy Metrics API
+impl MetricsRecorder for Metrics {
+    #[inline(always)]
+    fn incr(&self, _name: &str, _tags: &[&str]) {}
+    #[inline(always)]
+    fn histogram(&self, _name: &str, _value: f64, _tags: &[&str]) {}
+    #[inline(always)]
+    fn gauge(&self, _name: &str, _value: f64, _tags: &[&str]) {}
+    #[inline(always)]
+    fn timing(&self, _name: &str, _duration_ms: f64, _tags: &[&str]) {}
 }
 
 /// No-op timer - records nothing on drop

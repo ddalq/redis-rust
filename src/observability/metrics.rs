@@ -2,12 +2,15 @@
 //!
 //! Thread-safe, non-blocking UDP metrics client for Datadog.
 //! Gracefully degrades if the Datadog agent is unavailable.
+//!
+//! Implements MetricsRecorder trait for DST compatibility.
 
 use dogstatsd::{Client, Options};
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::config::DatadogConfig;
+use super::recorder::MetricsRecorder;
 
 /// Metrics client wrapper with graceful degradation
 #[derive(Clone)]
@@ -192,6 +195,45 @@ impl Metrics {
             self.incr("ttl.evictions", &[]);
             self.histogram("ttl.evictions.batch_size", count as f64, &[]);
         }
+    }
+}
+
+// Implement MetricsRecorder trait for DST compatibility
+impl MetricsRecorder for Metrics {
+    #[inline]
+    fn incr(&self, name: &str, tags: &[&str]) {
+        Metrics::incr(self, name, tags)
+    }
+
+    #[inline]
+    fn histogram(&self, name: &str, value: f64, tags: &[&str]) {
+        Metrics::histogram(self, name, value, tags)
+    }
+
+    #[inline]
+    fn gauge(&self, name: &str, value: f64, tags: &[&str]) {
+        Metrics::gauge(self, name, value, tags)
+    }
+
+    #[inline]
+    fn timing(&self, name: &str, duration_ms: f64, tags: &[&str]) {
+        Metrics::timing(self, name, duration_ms, tags)
+    }
+
+    fn record_command(&self, command: &str, duration_ms: f64, success: bool) {
+        Metrics::record_command(self, command, duration_ms, success)
+    }
+
+    fn record_connection(&self, event: &str) {
+        Metrics::record_connection(self, event)
+    }
+
+    fn set_connections(&self, count: usize) {
+        Metrics::set_connections(self, count)
+    }
+
+    fn record_ttl_eviction(&self, count: usize) {
+        Metrics::record_ttl_eviction(self, count)
     }
 }
 

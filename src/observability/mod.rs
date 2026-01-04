@@ -40,6 +40,7 @@
 
 pub mod config;
 pub mod metrics;
+pub mod recorder;
 pub mod tracing_setup;
 pub mod spans;
 
@@ -48,3 +49,15 @@ pub use config::DatadogConfig;
 pub use metrics::{Metrics, Timer};
 pub use tracing_setup::{init as init_tracing, shutdown};
 pub use spans::*;
+
+// DST-compatible metrics abstractions
+pub use recorder::{
+    MetricsRecorder,
+    NoopMetrics,
+    SimulatedMetrics,
+    SharedMetrics,
+    RecordedMetric,
+    MetricType,
+    noop_metrics,
+    simulated_metrics,
+};

@@ -323,11 +323,174 @@ impl RedisSortedSet {
                 .unwrap_or(Ordering::Equal)
                 .then_with(|| a.0.cmp(&b.0))
         });
+
+        // TigerStyle: Assert invariants after mutation
+        debug_assert_eq!(
+            self.members.len(),
+            self.sorted_members.len(),
+            "Invariant violated: members and sorted_members must have same length"
+        );
+        debug_assert!(
+            self.is_sorted(),
+            "Invariant violated: sorted_members must be sorted by (score, member)"
+        );
+    }
+
+    /// TigerStyle: Verify sorted invariant (used in debug_assert)
+    fn is_sorted(&self) -> bool {
+        self.sorted_members.windows(2).all(|w| {
+            let cmp = w[0].1.partial_cmp(&w[1].1).unwrap_or(Ordering::Equal);
+            cmp == Ordering::Less || (cmp == Ordering::Equal && w[0].0 <= w[1].0)
+        })
     }
 }
 
 impl PartialEq for RedisSortedSet {
     fn eq(&self, other: &Self) -> bool {
         self.members == other.members
+    }
+}
+
+#[cfg(test)]
+mod sorted_set_tests {
+    use super::*;
+
+    fn create_test_set() -> RedisSortedSet {
+        let mut zset = RedisSortedSet::new();
+        zset.add(SDS::from_str("alice"), 100.0);
+        zset.add(SDS::from_str("bob"), 200.0);
+        zset.add(SDS::from_str("charlie"), 150.0);
+        zset.add(SDS::from_str("dave"), 50.0);
+        zset
+    }
+
+    #[test]
+    fn test_sorted_set_ordering() {
+        let zset = create_test_set();
+
+        // Should be sorted by score: dave(50), alice(100), charlie(150), bob(200)
+        let range = zset.range(0, -1);
+        assert_eq!(range.len(), 4);
+        assert_eq!(range[0].0.to_string(), "dave");
+        assert_eq!(range[0].1, 50.0);
+        assert_eq!(range[1].0.to_string(), "alice");
+        assert_eq!(range[2].0.to_string(), "charlie");
+        assert_eq!(range[3].0.to_string(), "bob");
+    }
+
+    #[test]
+    fn test_rev_range_full() {
+        let zset = create_test_set();
+
+        // rev_range should return highest scores first: bob(200), charlie(150), alice(100), dave(50)
+        let range = zset.rev_range(0, -1);
+        assert_eq!(range.len(), 4);
+        assert_eq!(range[0].0.to_string(), "bob");
+        assert_eq!(range[0].1, 200.0);
+        assert_eq!(range[1].0.to_string(), "charlie");
+        assert_eq!(range[2].0.to_string(), "alice");
+        assert_eq!(range[3].0.to_string(), "dave");
+    }
+
+    #[test]
+    fn test_rev_range_subset() {
+        let zset = create_test_set();
+
+        // Get top 2 scores
+        let range = zset.rev_range(0, 1);
+        assert_eq!(range.len(), 2);
+        assert_eq!(range[0].0.to_string(), "bob");
+        assert_eq!(range[1].0.to_string(), "charlie");
+    }
+
+    #[test]
+    fn test_rev_range_negative_indices() {
+        let zset = create_test_set();
+
+        // Last 2 elements in reverse order (lowest scores)
+        let range = zset.rev_range(-2, -1);
+        assert_eq!(range.len(), 2);
+        assert_eq!(range[0].0.to_string(), "alice");
+        assert_eq!(range[1].0.to_string(), "dave");
+    }
+
+    #[test]
+    fn test_rev_range_empty_set() {
+        let zset = RedisSortedSet::new();
+        let range = zset.rev_range(0, -1);
+        assert!(range.is_empty());
+    }
+
+    #[test]
+    fn test_rev_range_out_of_bounds() {
+        let zset = create_test_set();
+
+        // Start beyond length
+        let range = zset.rev_range(10, 20);
+        assert!(range.is_empty());
+
+        // Invalid range (start > stop after normalization)
+        let range = zset.rev_range(3, 1);
+        assert!(range.is_empty());
+    }
+
+    #[test]
+    fn test_range_vs_rev_range_symmetry() {
+        let zset = create_test_set();
+
+        let forward = zset.range(0, -1);
+        let reverse = zset.rev_range(0, -1);
+
+        assert_eq!(forward.len(), reverse.len());
+
+        // First element of forward should equal last element of reverse
+        assert_eq!(forward[0].0.to_string(), reverse[3].0.to_string());
+        assert_eq!(forward[3].0.to_string(), reverse[0].0.to_string());
+    }
+
+    #[test]
+    fn test_sorted_set_with_equal_scores() {
+        let mut zset = RedisSortedSet::new();
+        zset.add(SDS::from_str("zebra"), 100.0);
+        zset.add(SDS::from_str("apple"), 100.0);
+        zset.add(SDS::from_str("mango"), 100.0);
+
+        // Same score: should be sorted lexicographically
+        let range = zset.range(0, -1);
+        assert_eq!(range[0].0.to_string(), "apple");
+        assert_eq!(range[1].0.to_string(), "mango");
+        assert_eq!(range[2].0.to_string(), "zebra");
+
+        // rev_range with equal scores: reverse lexicographic within same score
+        let rev = zset.rev_range(0, -1);
+        assert_eq!(rev[0].0.to_string(), "zebra");
+        assert_eq!(rev[1].0.to_string(), "mango");
+        assert_eq!(rev[2].0.to_string(), "apple");
+    }
+
+    #[test]
+    fn test_sorted_set_invariants_maintained() {
+        let mut zset = RedisSortedSet::new();
+
+        // Add elements
+        zset.add(SDS::from_str("a"), 1.0);
+        assert_eq!(zset.len(), 1);
+        assert!(zset.is_sorted());
+
+        // Update score
+        zset.add(SDS::from_str("a"), 5.0);
+        assert_eq!(zset.len(), 1); // Should not add duplicate
+        assert_eq!(zset.score(&SDS::from_str("a")), Some(5.0));
+        assert!(zset.is_sorted());
+
+        // Add more and remove
+        zset.add(SDS::from_str("b"), 3.0);
+        zset.add(SDS::from_str("c"), 7.0);
+        assert_eq!(zset.len(), 3);
+        assert!(zset.is_sorted());
+
+        zset.remove(&SDS::from_str("b"));
+        assert_eq!(zset.len(), 2);
+        assert!(zset.is_sorted());
     }
 }
