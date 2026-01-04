@@ -8,7 +8,7 @@
 //!
 //! Inspired by FoundationDB's simulation framework and TigerBeetle's IO abstraction.
 
-use super::{Clock, Duration, Network, NetworkListener, NetworkStream, Rng, Runtime, Ticker, Timestamp};
+use super::{Clock, Duration, Network, NetworkListener, NetworkStream, Rng, Runtime, Ticker, Timestamp, TimeSource};
 use crate::buggify::{self, faults, FaultConfig};
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::future::Future;
@@ -205,6 +205,52 @@ impl std::fmt::Debug for SimulationContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SimulationContext")
             .field("time", &self.now())
+            .finish()
+    }
+}
+
+/// Simulated time source for DST
+///
+/// This implements `TimeSource` by reading from a shared `SimulationContext`.
+/// The time can be advanced externally for time-travel testing.
+#[derive(Clone)]
+pub struct SimulatedTimeSource {
+    ctx: Arc<SimulationContext>,
+    node_id: NodeId,
+}
+
+impl SimulatedTimeSource {
+    /// Create a new simulated time source
+    pub fn new(ctx: Arc<SimulationContext>, node_id: NodeId) -> Self {
+        SimulatedTimeSource { ctx, node_id }
+    }
+
+    /// Create a time source with default node ID (for simple tests)
+    pub fn new_default(ctx: Arc<SimulationContext>) -> Self {
+        SimulatedTimeSource {
+            ctx,
+            node_id: NodeId(0),
+        }
+    }
+
+    /// Get the underlying context (for time manipulation)
+    pub fn context(&self) -> &Arc<SimulationContext> {
+        &self.ctx
+    }
+}
+
+impl TimeSource for SimulatedTimeSource {
+    #[inline]
+    fn now_millis(&self) -> u64 {
+        self.ctx.local_time(self.node_id).as_millis()
+    }
+}
+
+impl std::fmt::Debug for SimulatedTimeSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SimulatedTimeSource")
+            .field("node_id", &self.node_id)
+            .field("time_ms", &self.now_millis())
             .finish()
     }
 }

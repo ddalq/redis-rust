@@ -1,9 +1,9 @@
+use crate::io::{TimeSource, ProductionTimeSource};
 use crate::redis::{Command, CommandExecutor, RespValue};
 use crate::simulator::VirtualTime;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, oneshot};
 
 use super::adaptive_replication::{AdaptiveConfig, AdaptiveReplicationManager};
@@ -188,17 +188,26 @@ struct AdaptiveState {
     load_balancer: Option<ShardLoadBalancer>,
 }
 
+/// Sharded actor state with configurable time source
+///
+/// Generic over `T: TimeSource` for zero-cost abstraction:
+/// - Production: `ProductionTimeSource` (ZST, compiles to syscall)
+/// - Simulation: `SimulatedTimeSource` (virtual clock)
 #[derive(Clone)]
-pub struct ShardedActorState {
+pub struct ShardedActorState<T: TimeSource = ProductionTimeSource> {
     shards: Arc<Vec<ShardHandle>>,
     num_shards: usize,
-    start_time: SystemTime,
+    /// Timestamp (in millis) when this state was created
+    start_millis: u64,
+    /// Time source for getting current time
+    time_source: T,
     config: ShardConfig,
     /// Adaptive components (protected by RwLock for concurrent access)
     adaptive: Arc<RwLock<AdaptiveState>>,
 }
 
-impl ShardedActorState {
+/// Production-specific constructors (use ProductionTimeSource)
+impl ShardedActorState<ProductionTimeSource> {
     /// Create with default configuration (num_cpus shards)
     pub fn new() -> Self {
         Self::with_config(ShardConfig::default())
@@ -211,15 +220,23 @@ impl ShardedActorState {
 
     /// Create with full configuration
     pub fn with_config(config: ShardConfig) -> Self {
+        Self::with_config_and_time_source(config, ProductionTimeSource::new())
+    }
+}
+
+/// Generic implementation that works with any TimeSource
+impl<T: TimeSource> ShardedActorState<T> {
+    /// Create with configuration and custom time source
+    ///
+    /// This is the main constructor - all other constructors delegate to this.
+    pub fn with_config_and_time_source(config: ShardConfig, time_source: T) -> Self {
         let num_shards = config.initial_shards
             .max(config.min_shards)
             .min(config.max_shards);
 
-        // TigerStyle: Handle system clock edge cases gracefully
-        let epoch = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+        // Get epoch from time source (zero-cost for ProductionTimeSource)
+        let start_millis = time_source.now_millis();
+        let epoch = (start_millis / 1000) as i64;
 
         let shards: Vec<ShardHandle> = (0..num_shards)
             .map(|shard_id| {
@@ -253,7 +270,8 @@ impl ShardedActorState {
         ShardedActorState {
             shards: Arc::new(shards),
             num_shards,
-            start_time: SystemTime::now(),
+            start_millis,
+            time_source,
             config,
             adaptive: Arc::new(RwLock::new(AdaptiveState {
                 adaptive_manager,
@@ -265,6 +283,11 @@ impl ShardedActorState {
     /// Get current number of shards
     pub fn num_shards(&self) -> usize {
         self.num_shards
+    }
+
+    /// Get the time source
+    pub fn time_source(&self) -> &T {
+        &self.time_source
     }
 
     /// Check if adaptive features are enabled
@@ -364,11 +387,17 @@ impl ShardedActorState {
         info
     }
 
+    /// Get current virtual time (elapsed since creation)
+    ///
+    /// Uses the configured TimeSource for zero-cost abstraction:
+    /// - Production: direct syscall
+    /// - Simulation: reads virtual clock
     #[inline]
     fn get_current_virtual_time(&self) -> VirtualTime {
-        // TigerStyle: Handle system clock adjustments gracefully (clock may go backwards on NTP sync)
-        let elapsed = self.start_time.elapsed().unwrap_or_default();
-        VirtualTime::from_millis(elapsed.as_millis() as u64)
+        let now = self.time_source.now_millis();
+        // Saturating sub handles clock going backwards gracefully
+        let elapsed_ms = now.saturating_sub(self.start_millis);
+        VirtualTime::from_millis(elapsed_ms)
     }
 
     pub async fn evict_expired_all_shards(&self) -> usize {

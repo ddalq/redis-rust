@@ -18,6 +18,7 @@
 //! All I/O through ObjectStore trait. Deterministic segment selection
 //! based on segment ID ordering.
 
+use crate::io::{ProductionTimeSource, TimeSource};
 use crate::replication::state::ReplicationDelta;
 use crate::streaming::{
     Compression, Manifest, ManifestError, ManifestManager, ObjectStore, SegmentError,
@@ -148,21 +149,43 @@ pub struct CompactionStats {
 }
 
 /// Compactor manages segment compaction
-pub struct Compactor<S: ObjectStore + Clone + 'static> {
+///
+/// Generic over `T: TimeSource` for zero-cost abstraction:
+/// - Production: `ProductionTimeSource` (ZST, compiles to syscall)
+/// - Simulation: `SimulatedTimeSource` (virtual clock)
+pub struct Compactor<S: ObjectStore + Clone + 'static, T: TimeSource = ProductionTimeSource> {
     store: Arc<S>,
     prefix: String,
     manifest_manager: ManifestManager<S>,
     config: CompactionConfig,
     stats: CompactionStats,
+    time_source: T,
 }
 
-impl<S: ObjectStore + Clone + 'static> Compactor<S> {
-    /// Create a new compactor
+/// Production-specific constructors (use ProductionTimeSource)
+impl<S: ObjectStore + Clone + 'static> Compactor<S, ProductionTimeSource> {
+    /// Create a new compactor with production time source
     pub fn new(
         store: Arc<S>,
         prefix: String,
         manifest_manager: ManifestManager<S>,
         config: CompactionConfig,
+    ) -> Self {
+        Self::with_time_source(store, prefix, manifest_manager, config, ProductionTimeSource::new())
+    }
+}
+
+/// Generic implementation that works with any TimeSource
+impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
+    /// Create a new compactor with custom time source
+    ///
+    /// This is the main constructor - all other constructors delegate to this.
+    pub fn with_time_source(
+        store: Arc<S>,
+        prefix: String,
+        manifest_manager: ManifestManager<S>,
+        config: CompactionConfig,
+        time_source: T,
     ) -> Self {
         Compactor {
             store,
@@ -170,6 +193,7 @@ impl<S: ObjectStore + Clone + 'static> Compactor<S> {
             manifest_manager,
             config,
             stats: CompactionStats::default(),
+            time_source,
         }
     }
 
@@ -216,10 +240,8 @@ impl<S: ObjectStore + Clone + 'static> Compactor<S> {
         }
 
         // Calculate current timestamp for tombstone TTL
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        // Uses TimeSource for zero-cost abstraction (syscall in production, virtual clock in simulation)
+        let current_time = self.time_source.now_millis();
         let tombstone_cutoff = current_time.saturating_sub(self.config.tombstone_ttl.as_millis() as u64);
 
         // Load all deltas from selected segments
@@ -416,8 +438,10 @@ impl<S: ObjectStore + Clone + 'static> Compactor<S> {
 }
 
 /// Background compaction worker
-pub struct CompactionWorker<S: ObjectStore + Clone + 'static> {
-    compactor: Compactor<S>,
+///
+/// Generic over time source for DST compatibility.
+pub struct CompactionWorker<S: ObjectStore + Clone + 'static, T: TimeSource = ProductionTimeSource> {
+    compactor: Compactor<S, T>,
     check_interval: Duration,
     shutdown: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -435,9 +459,9 @@ impl CompactionWorkerHandle {
     }
 }
 
-impl<S: ObjectStore + Clone + 'static> CompactionWorker<S> {
+impl<S: ObjectStore + Clone + 'static, T: TimeSource> CompactionWorker<S, T> {
     /// Create a new compaction worker
-    pub fn new(compactor: Compactor<S>, check_interval: Duration) -> (Self, CompactionWorkerHandle) {
+    pub fn new(compactor: Compactor<S, T>, check_interval: Duration) -> (Self, CompactionWorkerHandle) {
         let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let handle = CompactionWorkerHandle {
             shutdown: shutdown.clone(),

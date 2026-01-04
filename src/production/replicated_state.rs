@@ -1,3 +1,4 @@
+use crate::io::{TimeSource, ProductionTimeSource};
 use crate::redis::{Command, CommandExecutor, RespValue};
 use crate::replication::{
     ReplicaId, ReplicationConfig, ConsistencyLevel,
@@ -12,7 +13,6 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const NUM_SHARDS: usize = 16;
 
@@ -105,16 +105,32 @@ impl ReplicatedShard {
     }
 }
 
-pub struct ReplicatedShardedState {
+/// Replicated sharded state with configurable time source
+///
+/// Generic over `T: TimeSource` for zero-cost abstraction:
+/// - Production: `ProductionTimeSource` (ZST, compiles to syscall)
+/// - Simulation: `SimulatedTimeSource` (virtual clock)
+pub struct ReplicatedShardedState<T: TimeSource = ProductionTimeSource> {
     shards: Vec<Arc<RwLock<ReplicatedShard>>>,
     config: ReplicationConfig,
     gossip_state: Arc<RwLock<GossipState>>,
     /// Optional delta sink for streaming persistence
     delta_sink: Option<DeltaSinkSender>,
+    /// Time source for getting current time
+    time_source: T,
 }
 
-impl ReplicatedShardedState {
+/// Production-specific constructors
+impl ReplicatedShardedState<ProductionTimeSource> {
     pub fn new(config: ReplicationConfig) -> Self {
+        Self::with_time_source(config, ProductionTimeSource::new())
+    }
+}
+
+/// Generic implementation that works with any TimeSource
+impl<T: TimeSource> ReplicatedShardedState<T> {
+    /// Create with configuration and custom time source
+    pub fn with_time_source(config: ReplicationConfig, time_source: T) -> Self {
         let replica_id = ReplicaId::new(config.replica_id);
         let consistency_level = config.consistency_level;
 
@@ -129,6 +145,7 @@ impl ReplicatedShardedState {
             config,
             gossip_state,
             delta_sink: None,
+            time_source,
         }
     }
 
@@ -255,11 +272,11 @@ impl ReplicatedShardedState {
         all_deltas
     }
 
+    /// Evict expired keys from all shards
+    ///
+    /// Uses the configured TimeSource for zero-cost abstraction.
     pub fn evict_expired_all_shards(&self) -> usize {
-        let current_time_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let current_time_ms = self.time_source.now_millis();
         let current_time = VirtualTime::from_millis(current_time_ms);
 
         let mut total_evicted = 0;
@@ -268,6 +285,11 @@ impl ReplicatedShardedState {
             total_evicted += s.evict_expired(current_time);
         }
         total_evicted
+    }
+
+    /// Get the time source
+    pub fn time_source(&self) -> &T {
+        &self.time_source
     }
 
     pub fn get_gossip_state(&self) -> Arc<RwLock<GossipState>> {
@@ -343,13 +365,14 @@ impl ReplicatedShardedState {
     }
 }
 
-impl Clone for ReplicatedShardedState {
+impl<T: TimeSource> Clone for ReplicatedShardedState<T> {
     fn clone(&self) -> Self {
         ReplicatedShardedState {
             shards: self.shards.clone(),
             config: self.config.clone(),
             gossip_state: self.gossip_state.clone(),
             delta_sink: self.delta_sink.clone(),
+            time_source: self.time_source.clone(),
         }
     }
 }

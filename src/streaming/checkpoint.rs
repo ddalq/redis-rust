@@ -18,6 +18,7 @@
 //!
 //! All I/O through ObjectStore trait. Deterministic checkpoint naming.
 
+use crate::io::{ProductionTimeSource, TimeSource};
 use crate::replication::state::ReplicatedValue;
 use crate::streaming::{
     Compression, ManifestManager, ObjectStore, SegmentError,
@@ -527,43 +528,62 @@ impl<'a> CheckpointReader<'a> {
 }
 
 /// Manages checkpoint lifecycle
-pub struct CheckpointManager<S: ObjectStore + Clone> {
+///
+/// Generic over `T: TimeSource` for zero-cost abstraction:
+/// - Production: `ProductionTimeSource` (ZST, compiles to syscall)
+/// - Simulation: `SimulatedTimeSource` (virtual clock)
+pub struct CheckpointManager<S: ObjectStore + Clone, T: TimeSource = ProductionTimeSource> {
     store: Arc<S>,
     prefix: String,
     manifest_manager: ManifestManager<S>,
     config: CheckpointConfig,
+    time_source: T,
 }
 
-impl<S: ObjectStore + Clone> CheckpointManager<S> {
-    /// Create a new checkpoint manager
+/// Production-specific constructors (use ProductionTimeSource)
+impl<S: ObjectStore + Clone> CheckpointManager<S, ProductionTimeSource> {
+    /// Create a new checkpoint manager with production time source
     pub fn new(
         store: Arc<S>,
         prefix: String,
         manifest_manager: ManifestManager<S>,
         config: CheckpointConfig,
     ) -> Self {
+        Self::with_time_source(store, prefix, manifest_manager, config, ProductionTimeSource::new())
+    }
+}
+
+/// Generic implementation that works with any TimeSource
+impl<S: ObjectStore + Clone, T: TimeSource> CheckpointManager<S, T> {
+    /// Create a new checkpoint manager with custom time source
+    ///
+    /// This is the main constructor - all other constructors delegate to this.
+    pub fn with_time_source(
+        store: Arc<S>,
+        prefix: String,
+        manifest_manager: ManifestManager<S>,
+        config: CheckpointConfig,
+        time_source: T,
+    ) -> Self {
         CheckpointManager {
             store,
             prefix,
             manifest_manager,
             config,
+            time_source,
         }
     }
 
     /// Create a checkpoint from current state
     ///
     /// The state should be a snapshot of all key-value pairs.
+    /// Uses TimeSource for zero-cost abstraction (syscall in production, virtual clock in simulation).
     pub async fn create_checkpoint(
         &self,
         state: HashMap<String, ReplicatedValue>,
         last_segment_id: u64,
     ) -> Result<CheckpointResult, CheckpointError> {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let timestamp_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let timestamp_ms = self.time_source.now_millis();
 
         let key_count = state.len() as u64;
 
@@ -618,12 +638,9 @@ impl<S: ObjectStore + Clone> CheckpointManager<S> {
         }
 
         // Check if we have a checkpoint and if it's old enough
+        // Uses TimeSource for zero-cost abstraction
         if let Some(ref checkpoint) = manifest.checkpoint {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let now_ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
+            let now_ms = self.time_source.now_millis();
 
             let elapsed_ms = now_ms.saturating_sub(checkpoint.timestamp_ms);
             let interval_ms = self.config.interval.as_millis() as u64;

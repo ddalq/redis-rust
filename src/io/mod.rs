@@ -4,6 +4,13 @@
 //! business logic to run in both production (tokio) and simulation (virtual I/O) modes.
 //!
 //! Inspired by FoundationDB's Flow runtime and TigerBeetle's IO abstraction.
+//!
+//! ## Zero-Cost Abstractions
+//!
+//! All traits use static dispatch via generics. In production builds:
+//! - `ProductionTimeSource::now_millis()` compiles to a direct syscall
+//! - No trait objects, no virtual dispatch, no heap allocation
+//! - Same performance as hand-written code
 
 pub mod production;
 pub mod simulation;
@@ -12,6 +19,33 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::io::Result as IoResult;
 use std::pin::Pin;
+
+/// Zero-cost time source abstraction
+///
+/// This trait provides a minimal interface for getting the current time.
+/// It's designed for maximum performance:
+/// - `Clone + Send + Sync` enables sharing across threads
+/// - Methods are `#[inline]` for zero overhead
+/// - Production implementation is a ZST (zero-sized type)
+///
+/// # Production
+/// `ProductionTimeSource` is a ZST that compiles to a direct `SystemTime::now()` call.
+/// Zero heap allocation, zero indirection.
+///
+/// # Simulation
+/// `SimulatedTimeSource` reads from a controlled virtual clock via `Arc`.
+pub trait TimeSource: Clone + Send + Sync + 'static {
+    /// Get current time in milliseconds since Unix epoch
+    ///
+    /// This is the hot path - must be as fast as possible.
+    fn now_millis(&self) -> u64;
+
+    /// Get current time as i64 (for signed arithmetic)
+    #[inline]
+    fn now_millis_i64(&self) -> i64 {
+        self.now_millis() as i64
+    }
+}
 
 /// Timestamp in milliseconds since epoch
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -195,6 +229,20 @@ pub type CurrentRuntime = production::ProductionRuntime;
 
 #[cfg(feature = "simulation")]
 pub type CurrentRuntime = simulation::SimulatedRuntime;
+
+/// Type alias for the current time source
+///
+/// In production: `ProductionTimeSource` (ZST, zero overhead)
+/// In simulation: `SimulatedTimeSource` (virtual clock)
+#[cfg(not(feature = "simulation"))]
+pub type CurrentTimeSource = production::ProductionTimeSource;
+
+#[cfg(feature = "simulation")]
+pub type CurrentTimeSource = simulation::SimulatedTimeSource;
+
+// Re-export commonly used types
+pub use production::ProductionTimeSource;
+pub use simulation::SimulatedTimeSource;
 
 #[cfg(test)]
 mod tests {

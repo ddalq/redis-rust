@@ -3,7 +3,7 @@
 //! Wraps tokio for real-world I/O operations.
 //! Zero overhead abstraction - all calls compile down to direct tokio calls.
 
-use super::{Clock, Duration, Network, NetworkListener, NetworkStream, Rng, Runtime, Ticker, Timestamp};
+use super::{Clock, Duration, Network, NetworkListener, NetworkStream, Rng, Runtime, Ticker, Timestamp, TimeSource};
 use std::future::Future;
 use std::io::Result as IoResult;
 use std::pin::Pin;
@@ -12,6 +12,32 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time;
+
+/// Zero-cost production time source
+///
+/// This is a zero-sized type (ZST) that compiles to direct syscalls.
+/// No heap allocation, no indirection - just `SystemTime::now()`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ProductionTimeSource;
+
+impl ProductionTimeSource {
+    /// Create a new production time source
+    #[inline]
+    pub const fn new() -> Self {
+        ProductionTimeSource
+    }
+}
+
+impl TimeSource for ProductionTimeSource {
+    #[inline]
+    fn now_millis(&self) -> u64 {
+        // TigerStyle: Handle clock edge cases gracefully
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+}
 
 /// Production runtime wrapping tokio
 #[derive(Debug)]
