@@ -1,11 +1,13 @@
 use super::ShardedActorState;
 use super::connection_pool::BufferPoolAsync;
 use crate::redis::{Command, RespValue, RespCodec};
+use crate::observability::{Metrics, spans};
 use bytes::{BytesMut, BufMut};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tracing::{info, warn, error, debug};
+use tracing::{info, warn, error, debug, Instrument};
 
 const MAX_BUFFER_SIZE: usize = 1024 * 1024;
 
@@ -16,6 +18,7 @@ pub struct OptimizedConnectionHandler {
     write_buffer: BytesMut,
     client_addr: String,
     buffer_pool: Arc<BufferPoolAsync>,
+    metrics: Arc<Metrics>,
 }
 
 impl OptimizedConnectionHandler {
@@ -25,6 +28,7 @@ impl OptimizedConnectionHandler {
         state: ShardedActorState,
         client_addr: String,
         buffer_pool: Arc<BufferPoolAsync>,
+        metrics: Arc<Metrics>,
     ) -> Self {
         let buffer = buffer_pool.acquire();
         let write_buffer = buffer_pool.acquire();
@@ -36,85 +40,95 @@ impl OptimizedConnectionHandler {
             write_buffer,
             client_addr,
             buffer_pool,
+            metrics,
         }
     }
 
     pub async fn run(mut self) {
-        info!("Client connected: {}", self.client_addr);
+        // Create connection span for distributed tracing
+        let connection_span = spans::connection_span(&self.client_addr);
 
-        // Enable TCP_NODELAY for lower latency (disable Nagle's algorithm)
-        if let Err(e) = self.stream.set_nodelay(true) {
-            warn!("Failed to set TCP_NODELAY: {}", e);
-        }
+        async {
+            info!("Client connected: {}", self.client_addr);
+            self.metrics.record_connection("established");
 
-        let mut read_buf = [0u8; 8192];
+            // Enable TCP_NODELAY for lower latency (disable Nagle's algorithm)
+            if let Err(e) = self.stream.set_nodelay(true) {
+                warn!("Failed to set TCP_NODELAY: {}", e);
+            }
 
-        loop {
-            match self.stream.read(&mut read_buf).await {
-                Ok(0) => {
-                    info!("Client disconnected: {}", self.client_addr);
-                    break;
-                }
-                Ok(n) => {
-                    if self.buffer.len() + n > MAX_BUFFER_SIZE {
-                        error!("Buffer overflow from {}, closing connection", self.client_addr);
-                        Self::encode_error_into("buffer overflow", &mut self.write_buffer);
-                        let _ = self.stream.write_all(&self.write_buffer).await;
+            let mut read_buf = [0u8; 8192];
+
+            loop {
+                match self.stream.read(&mut read_buf).await {
+                    Ok(0) => {
+                        info!("Client disconnected: {}", self.client_addr);
                         break;
                     }
+                    Ok(n) => {
+                        if self.buffer.len() + n > MAX_BUFFER_SIZE {
+                            error!("Buffer overflow from {}, closing connection", self.client_addr);
+                            Self::encode_error_into("buffer overflow", &mut self.write_buffer);
+                            let _ = self.stream.write_all(&self.write_buffer).await;
+                            break;
+                        }
 
-                    self.buffer.extend_from_slice(&read_buf[..n]);
+                        self.buffer.extend_from_slice(&read_buf[..n]);
 
-                    // Process ALL available commands (pipelining support)
-                    let mut commands_executed = 0;
-                    let mut had_parse_error = false;
+                        // Process ALL available commands (pipelining support)
+                        let mut commands_executed = 0;
+                        let mut had_parse_error = false;
 
-                    loop {
-                        match self.try_execute_command().await {
-                            CommandResult::Executed => {
-                                commands_executed += 1;
-                                // Don't flush yet - continue processing pipeline
+                        loop {
+                            match self.try_execute_command().await {
+                                CommandResult::Executed => {
+                                    commands_executed += 1;
+                                    // Don't flush yet - continue processing pipeline
+                                }
+                                CommandResult::NeedMoreData => break,
+                                CommandResult::ParseError(e) => {
+                                    warn!("Parse error from {}: {}, draining buffer", self.client_addr, e);
+                                    self.buffer.clear();
+                                    Self::encode_error_into("protocol error", &mut self.write_buffer);
+                                    had_parse_error = true;
+                                    break;
+                                }
                             }
-                            CommandResult::NeedMoreData => break,
-                            CommandResult::ParseError(e) => {
-                                warn!("Parse error from {}: {}, draining buffer", self.client_addr, e);
-                                self.buffer.clear();
-                                Self::encode_error_into("protocol error", &mut self.write_buffer);
-                                had_parse_error = true;
+                        }
+
+                        // Flush ALL responses at once (critical for pipelining performance)
+                        if !self.write_buffer.is_empty() {
+                            if let Err(e) = self.stream.write_all(&self.write_buffer).await {
+                                error!("Write failed to {}: {}", self.client_addr, e);
                                 break;
                             }
+                            // Ensure data is sent immediately
+                            if let Err(e) = self.stream.flush().await {
+                                error!("Flush failed to {}: {}", self.client_addr, e);
+                                break;
+                            }
+                            self.write_buffer.clear();
                         }
-                    }
 
-                    // Flush ALL responses at once (critical for pipelining performance)
-                    if !self.write_buffer.is_empty() {
-                        if let Err(e) = self.stream.write_all(&self.write_buffer).await {
-                            error!("Write failed to {}: {}", self.client_addr, e);
-                            break;
+                        if had_parse_error {
+                            // Continue to next read after parse error
                         }
-                        // Ensure data is sent immediately
-                        if let Err(e) = self.stream.flush().await {
-                            error!("Flush failed to {}: {}", self.client_addr, e);
-                            break;
-                        }
-                        self.write_buffer.clear();
-                    }
 
-                    if had_parse_error {
-                        // Continue to next read after parse error
+                        debug!("Processed {} commands in pipeline batch", commands_executed);
                     }
-
-                    debug!("Processed {} commands in pipeline batch", commands_executed);
-                }
-                Err(e) => {
-                    debug!("Read error from {}: {}", self.client_addr, e);
-                    break;
+                    Err(e) => {
+                        debug!("Read error from {}: {}", self.client_addr, e);
+                        break;
+                    }
                 }
             }
-        }
 
-        self.buffer_pool.release(self.buffer);
-        self.buffer_pool.release(self.write_buffer);
+            self.metrics.record_connection("closed");
+            self.buffer_pool.release(self.buffer);
+            self.buffer_pool.release(self.write_buffer);
+        }
+        .instrument(connection_span)
+        .await
     }
 
     #[inline]
@@ -123,11 +137,20 @@ impl OptimizedConnectionHandler {
             Ok(Some(resp_value)) => {
                 match Command::from_resp_zero_copy(&resp_value) {
                     Ok(cmd) => {
+                        let cmd_name = cmd.name();
+                        let start = Instant::now();
+
                         let response = self.state.execute(&cmd).await;
+
+                        let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                        let success = !matches!(&response, RespValue::Error(_));
+                        self.metrics.record_command(cmd_name, duration_ms, success);
+
                         Self::encode_resp_into(&response, &mut self.write_buffer);
                         CommandResult::Executed
                     }
                     Err(e) => {
+                        self.metrics.record_command("PARSE_ERROR", 0.0, false);
                         Self::encode_error_into(&e, &mut self.write_buffer);
                         CommandResult::Executed
                     }

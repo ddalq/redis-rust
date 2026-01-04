@@ -1,0 +1,107 @@
+# Docker Compose for Redis Rust with Datadog observability
+#
+# This stack includes:
+# - redis-rust server with Datadog instrumentation
+# - Datadog Agent for metrics, traces, and logs
+#
+# Prerequisites:
+#   export DD_API_KEY=your-api-key
+#
+# Usage:
+#   docker-compose -f docker/docker-compose.datadog.yml up --build
+
+version: "3.9"
+
+services:
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: datadog-agent
+    environment:
+      - DD_API_KEY=${DD_API_KEY}
+      - DD_SITE=${DD_SITE:-datadoghq.com}
+      - DD_HOSTNAME=redis-rust-docker
+      # APM settings
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+      # DogStatsD settings
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+      # Log collection
+      - DD_LOGS_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+      # Process monitoring
+      - DD_PROCESS_AGENT_ENABLED=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+    ports:
+      - "8125:8125/udp"  # DogStatsD
+      - "8126:8126"      # APM
+    healthcheck:
+      test: ["CMD", "agent", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  redis-rust:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.datadog
+    container_name: redis-rust
+    depends_on:
+      datadog-agent:
+        condition: service_healthy
+    environment:
+      - REDIS_PORT=6379
+      - REDIS_STORE_TYPE=localfs
+      - REDIS_DATA_PATH=/data
+      # Datadog settings
+      - DD_SERVICE=redis-rust
+      - DD_ENV=${DD_ENV:-development}
+      - DD_VERSION=${DD_VERSION:-0.1.0}
+      - DD_DOGSTATSD_URL=datadog-agent:8125
+      - DD_TRACE_AGENT_URL=http://datadog-agent:8126
+      - DD_TRACE_SAMPLE_RATE=1.0
+      - DD_LOGS_INJECTION=true
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"     # Redis
+      - "6380:6380"     # Health check
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "redis-rust", "service": "redis-rust"}]'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6380/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # Optimized server variant (no persistence)
+  redis-rust-optimized:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.datadog
+    container_name: redis-rust-optimized
+    depends_on:
+      datadog-agent:
+        condition: service_healthy
+    environment:
+      - REDIS_PORT=6381
+      # Datadog settings
+      - DD_SERVICE=redis-rust-optimized
+      - DD_ENV=${DD_ENV:-development}
+      - DD_VERSION=${DD_VERSION:-0.1.0}
+      - DD_DOGSTATSD_URL=datadog-agent:8125
+      - DD_TRACE_AGENT_URL=http://datadog-agent:8126
+      - DD_TRACE_SAMPLE_RATE=1.0
+    ports:
+      - "6381:6381"
+    command: ["redis-server-optimized"]
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "redis-rust", "service": "redis-rust-optimized"}]'
+    profiles:
+      - optimized
+
+volumes:
+  redis-data:

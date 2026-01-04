@@ -16,6 +16,15 @@
 //! | AWS_ACCESS_KEY_ID | - | S3 credentials |
 //! | AWS_SECRET_ACCESS_KEY | - | S3 credentials |
 //! | AWS_REGION | us-east-1 | S3 region |
+//!
+//! ## Datadog (when built with --features datadog)
+//!
+//! | Variable | Default | Description |
+//! |----------|---------|-------------|
+//! | DD_SERVICE | redis-rust | Service name |
+//! | DD_ENV | development | Environment |
+//! | DD_DOGSTATSD_URL | 127.0.0.1:8125 | DogStatsD address |
+//! | DD_TRACE_AGENT_URL | http://127.0.0.1:8126 | APM agent URL |
 
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
@@ -31,6 +40,7 @@ use redis_sim::streaming::{
     create_integration, StreamingIntegrationTrait,
 };
 use redis_sim::redis::{RespCodec, RespValue, Command};
+use redis_sim::observability::{DatadogConfig, init_tracing, shutdown};
 use bytes::{BytesMut, BufMut};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -133,10 +143,10 @@ impl Config {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Initialize observability (Datadog when feature enabled, basic tracing otherwise)
+    let dd_config = DatadogConfig::from_env();
+    init_tracing(&dd_config)?;
 
     // Load configuration from environment
     let config = Config::from_env();
@@ -160,6 +170,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {}
     }
+    #[cfg(feature = "datadog")]
+    println!("  Datadog observability enabled");
     println!();
 
     // Create replication config
@@ -273,6 +285,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Graceful shutdown
     info!("Shutting down persistence workers...");
     worker_handles.shutdown().await;
+
+    // Shutdown observability (flush pending spans/metrics)
+    shutdown();
 
     println!("Server shutdown complete");
     info!("Server shutdown complete");

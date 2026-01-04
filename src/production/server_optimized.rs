@@ -1,6 +1,7 @@
 use super::{ShardedActorState, ConnectionPool};
 use super::connection_optimized::OptimizedConnectionHandler;
 use super::ttl_manager::TtlManagerActor;
+use crate::observability::{DatadogConfig, Metrics};
 use tokio::net::TcpListener;
 use tracing::{info, error};
 use std::sync::Arc;
@@ -18,13 +19,17 @@ impl OptimizedRedisServer {
         OptimizedRedisServer { addr }
     }
 
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let state = ShardedActorState::new();
         let connection_pool = Arc::new(ConnectionPool::new(10000, 512));
 
+        // Initialize metrics
+        let dd_config = DatadogConfig::from_env();
+        let metrics = Arc::new(Metrics::new(&dd_config));
+
         info!("Initialized Tiger Style Redis with {} shards (lock-free)", NUM_SHARDS);
 
-        let ttl_manager = TtlManagerActor::new(state.clone());
+        let ttl_manager = TtlManagerActor::new(state.clone(), metrics.clone());
         tokio::spawn(async move {
             ttl_manager.run().await;
         });
@@ -39,6 +44,7 @@ impl OptimizedRedisServer {
                     let client_addr = addr.to_string();
                     let state_clone = state.clone();
                     let pool = connection_pool.clone();
+                    let metrics_clone = metrics.clone();
 
                     tokio::spawn(async move {
                         let _permit = pool.acquire_permit().await;
@@ -48,6 +54,7 @@ impl OptimizedRedisServer {
                             state_clone,
                             client_addr,
                             pool.buffer_pool(),
+                            metrics_clone,
                         );
                         handler.run().await;
                     });
