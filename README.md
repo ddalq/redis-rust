@@ -12,6 +12,7 @@ A production-ready, actor-based Redis cache server in Rust with distributed repl
 - **Hot Key Detection**: Adaptive replication for high-traffic keys
 - **Deterministic Simulation**: FoundationDB/TigerBeetle-style testing harness
 - **Maelstrom/Jepsen Integration**: Formal linearizability testing (single-node verified)
+- **Datadog Observability**: Optional metrics, tracing, and logging via feature flag
 
 ## Quick Start
 
@@ -169,7 +170,7 @@ cargo test --all
 `HSET`, `HGET`, `HDEL`, `HGETALL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`
 
 ### Sorted Sets
-`ZADD`, `ZREM`, `ZSCORE`, `ZRANK`, `ZRANGE`, `ZCARD`
+`ZADD`, `ZREM`, `ZSCORE`, `ZRANK`, `ZRANGE`, `ZREVRANGE`, `ZCARD`
 
 ### Server
 `PING`, `INFO`
@@ -189,6 +190,7 @@ cargo test --all
 | ACL/Auth | Yes | No |
 | Hot Key Handling | Manual | Automatic detection |
 | Deterministic Testing | No | Yes (DST framework) |
+| Datadog Integration | Via plugin | Native (feature flag) |
 
 **Trade-offs**: We sacrifice some Redis features (persistence, pub/sub) in favor of coordination-free replication and deterministic simulation testing.
 
@@ -220,12 +222,18 @@ src/
 │   ├── lattice.rs                   # CRDT primitives (LWW, GCounter, PNCounter)
 │   ├── state.rs                     # Replica state management
 │   └── gossip.rs                    # Gossip message types
-└── simulator/
-    ├── harness.rs                   # SimulationHarness, ScenarioBuilder
-    ├── executor.rs                  # Event-driven execution
-    ├── time.rs                      # VirtualTime
-    ├── network.rs                   # Network fault simulation
-    └── rng.rs                       # DeterministicRng, buggify()
+├── simulator/
+│   ├── harness.rs                   # SimulationHarness, ScenarioBuilder
+│   ├── executor.rs                  # Event-driven execution
+│   ├── time.rs                      # VirtualTime
+│   ├── network.rs                   # Network fault simulation
+│   └── rng.rs                       # DeterministicRng, buggify()
+└── observability/                   # Datadog integration (optional)
+    ├── config.rs                    # Environment configuration
+    ├── metrics.rs                   # DogStatsD client
+    ├── recorder.rs                  # DST-compatible MetricsRecorder trait
+    ├── tracing_setup.rs             # OpenTelemetry + Datadog APM
+    └── spans.rs                     # Span helpers
 ```
 
 ## Docker Benchmarking
@@ -237,8 +245,72 @@ cd docker-benchmark
 ./run-benchmarks.sh
 ```
 
+## Datadog Observability
+
+Full observability support with optional `datadog` feature flag. Zero overhead when disabled.
+
+### Enable Datadog Features
+
+```bash
+# Build with Datadog support
+cargo build --release --features datadog
+
+# Or use the Docker image
+docker build -f docker/Dockerfile.datadog -t redis-rust:datadog .
+```
+
+### Metrics (DogStatsD)
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `redis_rust.command.duration` | histogram | Command latency (ms) |
+| `redis_rust.command.count` | counter | Command throughput |
+| `redis_rust.connections.active` | gauge | Active connections |
+| `redis_rust.ttl.evictions` | counter | Keys evicted by TTL |
+
+### Tracing (APM)
+
+- Distributed tracing with OpenTelemetry + Datadog exporter
+- Automatic span creation for connections and commands
+- Trace correlation in JSON logs
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DD_SERVICE` | `redis-rust` | Service name |
+| `DD_ENV` | `development` | Environment tag |
+| `DD_VERSION` | pkg version | Service version |
+| `DD_DOGSTATSD_URL` | `127.0.0.1:8125` | DogStatsD endpoint |
+| `DD_TRACE_AGENT_URL` | `http://127.0.0.1:8126` | APM agent endpoint |
+| `DD_TRACE_SAMPLE_RATE` | `1.0` | Trace sampling (0.0-1.0) |
+
+### Docker Compose with Datadog Agent
+
+```bash
+# Start full stack with Datadog agent
+docker-compose -f docker/docker-compose.datadog.yml up
+```
+
+### DST-Compatible Metrics
+
+The observability module provides a `MetricsRecorder` trait for simulation testing:
+
+```rust
+use redis_sim::observability::{MetricsRecorder, SimulatedMetrics};
+
+// In tests: use simulated metrics
+let metrics = SimulatedMetrics::new();
+metrics.record_command("GET", 1.0, true);
+assert_eq!(metrics.command_count(), 1);
+
+// In production: use real Datadog metrics
+let metrics = Metrics::new(&DatadogConfig::from_env());
+```
+
 ## Dependencies
 
+### Core
 - `tokio` - Async runtime
 - `tikv-jemallocator` - Custom memory allocator
 - `crossbeam` - Lock-free buffer pooling
@@ -246,6 +318,11 @@ cd docker-benchmark
 - `serde` / `serde_json` - Gossip protocol serialization
 - `rand_chacha` - Deterministic PRNG for simulation
 - `tracing` - Structured logging
+
+### Datadog (optional, via `--features datadog`)
+- `dogstatsd` - DogStatsD metrics client
+- `opentelemetry` / `opentelemetry-datadog` - APM tracing
+- `tracing-opentelemetry` - Tracing integration
 
 ## License
 
