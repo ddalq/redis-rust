@@ -71,6 +71,28 @@ pub mod disk {
     pub const DISK_FULL: &str = "disk.disk_full";
 }
 
+/// Object store faults - streaming persistence chaos
+pub mod object_store {
+    /// Put operation fails
+    pub const PUT_FAIL: &str = "object_store.put_fail";
+    /// Get operation fails
+    pub const GET_FAIL: &str = "object_store.get_fail";
+    /// Get returns corrupted data
+    pub const GET_CORRUPT: &str = "object_store.get_corrupt";
+    /// Operation times out
+    pub const TIMEOUT: &str = "object_store.timeout";
+    /// Partial write (segment truncated)
+    pub const PARTIAL_WRITE: &str = "object_store.partial_write";
+    /// Delete operation fails
+    pub const DELETE_FAIL: &str = "object_store.delete_fail";
+    /// List operation returns incomplete results
+    pub const LIST_INCOMPLETE: &str = "object_store.list_incomplete";
+    /// Rename/move operation fails (non-atomic)
+    pub const RENAME_FAIL: &str = "object_store.rename_fail";
+    /// Slow object store response
+    pub const SLOW: &str = "object_store.slow";
+}
+
 /// Replication faults - distributed system chaos
 pub mod replication {
     /// Drop gossip message
@@ -117,6 +139,16 @@ pub const ALL_FAULTS: &[&str] = &[
     disk::FSYNC_FAIL,
     disk::STALE_READ,
     disk::DISK_FULL,
+    // Object Store
+    object_store::PUT_FAIL,
+    object_store::GET_FAIL,
+    object_store::GET_CORRUPT,
+    object_store::TIMEOUT,
+    object_store::PARTIAL_WRITE,
+    object_store::DELETE_FAIL,
+    object_store::LIST_INCOMPLETE,
+    object_store::RENAME_FAIL,
+    object_store::SLOW,
     // Replication
     replication::GOSSIP_DROP,
     replication::GOSSIP_DELAY,

@@ -6,8 +6,10 @@ use crate::replication::{
 use crate::replication::state::ShardReplicaState;
 use crate::replication::gossip::GossipState;
 use crate::simulator::VirtualTime;
+use crate::streaming::DeltaSinkSender;
 use parking_lot::RwLock;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -107,6 +109,8 @@ pub struct ReplicatedShardedState {
     shards: Vec<Arc<RwLock<ReplicatedShard>>>,
     config: ReplicationConfig,
     gossip_state: Arc<RwLock<GossipState>>,
+    /// Optional delta sink for streaming persistence
+    delta_sink: Option<DeltaSinkSender>,
 }
 
 impl ReplicatedShardedState {
@@ -124,7 +128,23 @@ impl ReplicatedShardedState {
             shards,
             config,
             gossip_state,
+            delta_sink: None,
         }
+    }
+
+    /// Set the delta sink for streaming persistence
+    pub fn set_delta_sink(&mut self, sink: DeltaSinkSender) {
+        self.delta_sink = Some(sink);
+    }
+
+    /// Clear the delta sink (for shutdown)
+    pub fn clear_delta_sink(&mut self) {
+        self.delta_sink = None;
+    }
+
+    /// Check if streaming persistence is enabled
+    pub fn has_streaming_persistence(&self) -> bool {
+        self.delta_sink.is_some()
     }
 
     pub fn execute(&self, cmd: Command) -> RespValue {
@@ -134,9 +154,16 @@ impl ReplicatedShardedState {
             let (result, delta) = shard.execute(&cmd);
 
             if let Some(delta) = delta {
+                // Send to gossip for replication
                 if self.config.enabled {
                     let mut gossip = self.gossip_state.write();
-                    gossip.queue_deltas(vec![delta]);
+                    gossip.queue_deltas(vec![delta.clone()]);
+                }
+
+                // Send to streaming persistence if enabled
+                if let Some(ref sink) = self.delta_sink {
+                    // Best-effort send - don't block or error on persistence failures
+                    let _ = sink.send(delta);
                 }
             }
 
@@ -254,6 +281,66 @@ impl ReplicatedShardedState {
     pub fn num_shards(&self) -> usize {
         NUM_SHARDS
     }
+
+    /// Create a snapshot of all replicated state for checkpointing
+    ///
+    /// Returns a HashMap of all keys to their ReplicatedValue across all shards.
+    /// This is used by the CheckpointManager to create full state snapshots.
+    pub fn snapshot_state(&self) -> HashMap<String, crate::replication::state::ReplicatedValue> {
+        let mut snapshot = HashMap::new();
+        for shard in &self.shards {
+            let s = shard.read();
+            for (key, value) in &s.replica_state.replicated_keys {
+                snapshot.insert(key.clone(), value.clone());
+            }
+        }
+        snapshot
+    }
+
+    /// Apply recovered state from persistence
+    ///
+    /// This is called during server startup to restore state from object store.
+    /// If checkpoint_state is provided, it replaces the current state.
+    /// Then all deltas are applied in order (CRDT merge is idempotent).
+    pub fn apply_recovered_state(
+        &self,
+        checkpoint_state: Option<HashMap<String, crate::replication::state::ReplicatedValue>>,
+        deltas: Vec<ReplicationDelta>,
+    ) {
+        // Step 1: Apply checkpoint state if present
+        if let Some(state) = checkpoint_state {
+            for (key, value) in state {
+                let shard_idx = hash_key(&key);
+                let mut shard = self.shards[shard_idx].write();
+                shard.replica_state.replicated_keys.insert(key.clone(), value.clone());
+
+                // Also apply to executor for command execution
+                if let Some(v) = value.get() {
+                    if let Some(expiry_ms) = value.expiry_ms {
+                        let seconds = (expiry_ms / 1000) as i64;
+                        let cmd = crate::redis::Command::SetEx(key, seconds, v.clone());
+                        shard.executor.execute(&cmd);
+                    } else {
+                        let cmd = crate::redis::Command::Set(key, v.clone());
+                        shard.executor.execute(&cmd);
+                    }
+                }
+            }
+        }
+
+        // Step 2: Apply all deltas (CRDT merge is idempotent)
+        self.apply_remote_deltas(deltas);
+    }
+
+    /// Get the total number of keys across all shards
+    pub fn key_count(&self) -> usize {
+        let mut count = 0;
+        for shard in &self.shards {
+            let s = shard.read();
+            count += s.replica_state.replicated_keys.len();
+        }
+        count
+    }
 }
 
 impl Clone for ReplicatedShardedState {
@@ -262,6 +349,7 @@ impl Clone for ReplicatedShardedState {
             shards: self.shards.clone(),
             config: self.config.clone(),
             gossip_state: self.gossip_state.clone(),
+            delta_sink: self.delta_sink.clone(),
         }
     }
 }

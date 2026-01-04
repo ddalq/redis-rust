@@ -5,6 +5,7 @@ pub mod redis;
 pub mod production;
 pub mod replication;
 pub mod metrics;
+pub mod streaming;
 
 pub use simulator::{Simulation, SimulationConfig, Host, NetworkEvent};
 pub use redis::{RedisServer, RedisClient, Value, RespParser};
