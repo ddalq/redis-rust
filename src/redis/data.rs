@@ -549,21 +549,141 @@ impl RedisSortedSet {
         }
     }
 
+    /// VOPR: Verify all invariants hold for this sorted set
+    #[cfg(debug_assertions)]
+    fn verify_invariants(&self) {
+        // Invariant 1: len() must match actual HashMap size
+        debug_assert_eq!(
+            self.len(),
+            self.members.len(),
+            "Invariant violated: len() must equal members.len()"
+        );
+
+        // Invariant 2: is_empty() must be consistent with len()
+        debug_assert_eq!(
+            self.is_empty(),
+            self.members.is_empty(),
+            "Invariant violated: is_empty() must equal members.is_empty()"
+        );
+
+        // Invariant 3: members and sorted_members must have same length
+        debug_assert_eq!(
+            self.members.len(),
+            self.sorted_members.len(),
+            "Invariant violated: members and sorted_members must have same length"
+        );
+
+        // Invariant 4: sorted_members must be sorted by (score, member)
+        debug_assert!(
+            self.is_sorted(),
+            "Invariant violated: sorted_members must be sorted by (score, member)"
+        );
+
+        // Invariant 5: Every member in HashMap must be in sorted_members with matching score
+        for (member, score) in &self.members {
+            let found = self.sorted_members.iter().find(|(m, _)| m == member);
+            debug_assert!(
+                found.is_some(),
+                "Invariant violated: member '{}' in HashMap but not in sorted_members",
+                member
+            );
+            debug_assert_eq!(
+                found.map(|(_, s)| *s),
+                Some(*score),
+                "Invariant violated: score mismatch for member '{}'",
+                member
+            );
+        }
+
+        // Invariant 6: Every member in sorted_members must be in HashMap
+        for (member, score) in &self.sorted_members {
+            debug_assert!(
+                self.members.contains_key(member),
+                "Invariant violated: member '{}' in sorted_members but not in HashMap",
+                member
+            );
+            debug_assert_eq!(
+                self.members.get(member),
+                Some(score),
+                "Invariant violated: score mismatch for member '{}' in HashMap",
+                member
+            );
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    fn verify_invariants(&self) {}
+
     pub fn add(&mut self, member: SDS, score: f64) -> bool {
         let key = member.to_string();
+
+        // TigerStyle: Preconditions - capture state for postcondition check
+        #[cfg(debug_assertions)]
+        let pre_len = self.members.len();
         let is_new = !self.members.contains_key(&key);
-        
+
         self.members.insert(key.clone(), score);
         self.rebuild_sorted();
-        
+
+        // TigerStyle: Postconditions
+        debug_assert!(
+            self.members.contains_key(&key),
+            "Postcondition violated: member must exist after add"
+        );
+        debug_assert_eq!(
+            self.members.get(&key),
+            Some(&score),
+            "Postcondition violated: score must match after add"
+        );
+        #[cfg(debug_assertions)]
+        {
+            let expected_len = if is_new { pre_len + 1 } else { pre_len };
+            debug_assert_eq!(
+                self.members.len(),
+                expected_len,
+                "Postcondition violated: len must be correct after add"
+            );
+        }
+
+        self.verify_invariants();
         is_new
     }
 
     pub fn remove(&mut self, member: &SDS) -> bool {
-        let removed = self.members.remove(&member.to_string()).is_some();
+        let key = member.to_string();
+
+        // TigerStyle: Preconditions - capture state for postcondition check
+        #[cfg(debug_assertions)]
+        let pre_len = self.members.len();
+        #[cfg(debug_assertions)]
+        let existed = self.members.contains_key(&key);
+
+        let removed = self.members.remove(&key).is_some();
         if removed {
             self.rebuild_sorted();
         }
+
+        // TigerStyle: Postconditions
+        debug_assert!(
+            !self.members.contains_key(&key),
+            "Postcondition violated: member must not exist after remove"
+        );
+        #[cfg(debug_assertions)]
+        {
+            debug_assert_eq!(
+                removed, existed,
+                "Postcondition violated: remove result must match prior existence"
+            );
+            let expected_len = if existed { pre_len - 1 } else { pre_len };
+            debug_assert_eq!(
+                self.members.len(),
+                expected_len,
+                "Postcondition violated: len must be correct after remove"
+            );
+        }
+
+        self.verify_invariants();
         removed
     }
 
