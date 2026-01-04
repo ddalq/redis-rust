@@ -1,5 +1,42 @@
 # Claude Code Guidelines for redis-rust
 
+## ⚠️ MANDATORY: Default Development Workflow
+
+**For EVERY code change, follow this order:**
+
+### 1. Plan First (Architecture)
+Before writing any code:
+- Identify which components are affected
+- Check if new I/O abstractions are needed for testability
+- Determine if actor boundaries need modification
+- Document the approach in a brief plan
+
+### 2. TigerStyle First
+Every function/method must have:
+- `debug_assert!` for preconditions at entry
+- `debug_assert!` for postconditions/invariants after mutations
+- Checked arithmetic (use `checked_add`, `checked_sub`, etc.)
+- Explicit error handling (no `.unwrap()` in production paths)
+- Early returns for error cases
+
+### 3. DST-Compatible Design
+Every new component must be:
+- **Simulatable**: All I/O through trait abstractions
+- **Deterministic**: No hidden randomness, use `SimulatedRng`
+- **Time-controllable**: Use `VirtualTime`, not `std::time`
+
+### 4. Write Tests Before/With Code
+- Unit tests for pure logic
+- DST tests with fault injection for I/O components
+- Multiple seeds (minimum 10) for simulation tests
+
+### 5. VOPR (Verification-Oriented Programming)
+- State invariants must be checkable at any point
+- Add `verify_invariants()` methods to stateful structs
+- Run invariant checks in debug builds after every mutation
+
+---
+
 ## Project Philosophy
 
 This project follows **Simulation-First Development** inspired by FoundationDB and TigerBeetle. The core principle: **if you can't simulate it, you can't test it properly**.
@@ -43,12 +80,87 @@ struct SharedPersistence {
 
 ### 3. TigerStyle Coding
 
-- **Assertions**: Use `debug_assert!` liberally for invariants
-- **No hidden allocations**: Be explicit about where memory is allocated
-- **Simple control flow**: Prefer early returns, avoid deep nesting
-- **Explicit errors**: No panics in production paths, explicit `Result<T, E>`
+**Assertions (REQUIRED for every mutation):**
+```rust
+// GOOD: Assert preconditions and postconditions
+fn hincrby(&mut self, field: &str, increment: i64) -> Result<i64> {
+    debug_assert!(!field.is_empty(), "Precondition: field must not be empty");
 
-### 4. Static Stability
+    let new_value = self.value.checked_add(increment)
+        .ok_or_else(|| Error::Overflow)?;
+
+    self.value = new_value;
+
+    debug_assert_eq!(self.get(field), Some(new_value),
+        "Postcondition: value must equal computed result");
+
+    Ok(new_value)
+}
+
+// BAD: No assertions, silent failures
+fn hincrby(&mut self, field: &str, increment: i64) -> i64 {
+    self.value += increment;  // Can overflow!
+    self.value
+}
+```
+
+**Checked Arithmetic (REQUIRED):**
+- Use `checked_add`, `checked_sub`, `checked_mul`, `checked_div`
+- Return explicit errors on overflow, never wrap silently
+- Use `saturating_*` only when saturation is the correct behavior
+
+**Control Flow:**
+- Prefer early returns, avoid deep nesting
+- No hidden allocations - be explicit about `Vec::with_capacity`
+- No panics in production paths, explicit `Result<T, E>`
+
+**Naming:**
+- Functions that can fail: return `Result<T, E>`
+- Functions that assert: prefix with `debug_assert!`
+- Unsafe blocks: document why they're safe
+
+### 4. VOPR (Verification-Oriented Programming)
+
+Every stateful struct should be verifiable:
+
+```rust
+// GOOD: Struct with verification method
+impl RedisSortedSet {
+    /// Verify all invariants hold - call in debug builds after mutations
+    fn verify_invariants(&self) {
+        debug_assert_eq!(
+            self.members.len(),
+            self.sorted_members.len(),
+            "Invariant: members and sorted_members must have same length"
+        );
+        debug_assert!(
+            self.is_sorted(),
+            "Invariant: sorted_members must be sorted by (score, member)"
+        );
+        for (member, _) in &self.sorted_members {
+            debug_assert!(
+                self.members.contains_key(member),
+                "Invariant: every sorted member must exist in members map"
+            );
+        }
+    }
+
+    pub fn add(&mut self, member: String, score: f64) {
+        // ... mutation logic ...
+
+        #[cfg(debug_assertions)]
+        self.verify_invariants();
+    }
+}
+```
+
+**VOPR Checklist for New Structs:**
+- [ ] Define all invariants in comments
+- [ ] Implement `verify_invariants()` method
+- [ ] Call verification after every public mutation method
+- [ ] Add `#[cfg(debug_assertions)]` to avoid release overhead
+
+### 5. Static Stability
 
 Systems must remain stable under partial failures:
 - Graceful degradation when dependencies fail
@@ -57,19 +169,46 @@ Systems must remain stable under partial failures:
 
 ## Testing Strategy
 
-### Unit Tests
+**Priority Order (most to least important):**
+
+### 1. DST Tests (REQUIRED for I/O components)
+```rust
+#[test]
+fn test_with_fault_injection() {
+    for seed in 0..50 {  // Minimum 10 seeds, prefer 50+
+        let mut harness = SimulationHarness::new(seed);
+        harness.enable_chaos();  // Random faults
+
+        // Run test scenario
+        harness.run_scenario(|ctx| async {
+            // Test logic here
+        });
+
+        harness.verify_invariants();
+    }
+}
+```
+
+**DST tests MUST:**
+- Run with multiple seeds (minimum 10, ideally 50+)
+- Include fault injection (network drops, delays, failures)
+- Verify invariants after each operation
+- Be deterministic given the same seed
+
+### 2. Unit Tests (REQUIRED for pure logic)
 - Test pure logic without I/O
 - Use `InMemoryObjectStore` for storage tests
+- Include edge cases: empty inputs, max values, overflow
 
-### Simulation Tests (DST)
-- Use `SimulatedObjectStore` with fault injection
-- Control time via `SimulatedClock`
-- Run thousands of seeds to find edge cases
+### 3. Integration Tests
+- Test component interactions
+- Use real async runtime but simulated I/O
 
-### Linearizability Tests (Jepsen-style)
+### 4. Linearizability Tests (Jepsen-style)
 - Use Maelstrom for distributed correctness
 - Test under network partitions
 - Verify consistency guarantees
+- Run: `./maelstrom/maelstrom test -w lin-kv --bin ./target/release/maelstrom_kv_replicated`
 
 ## Key Files
 
