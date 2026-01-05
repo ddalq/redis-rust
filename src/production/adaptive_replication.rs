@@ -79,6 +79,48 @@ pub struct AdaptiveReplicationManager {
 }
 
 impl AdaptiveReplicationManager {
+    /// VOPR: Verify all invariants hold for this manager
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: All RF overrides must be >= base_rf
+        for (key, &rf) in &self.key_rf_overrides {
+            debug_assert!(
+                rf >= self.config.base_rf,
+                "Invariant violated: key '{}' has RF {} < base RF {}",
+                key,
+                rf,
+                self.config.base_rf
+            );
+        }
+
+        // Invariant 2: All RF overrides should equal hot_key_rf (consistency)
+        for (key, &rf) in &self.key_rf_overrides {
+            debug_assert_eq!(
+                rf,
+                self.config.hot_key_rf,
+                "Invariant violated: key '{}' has RF {} but hot_key_rf is {}",
+                key,
+                rf,
+                self.config.hot_key_rf
+            );
+        }
+
+        // Invariant 3: hot_key_rf >= base_rf (config consistency)
+        debug_assert!(
+            self.config.hot_key_rf >= self.config.base_rf,
+            "Invariant violated: hot_key_rf {} < base_rf {}",
+            self.config.hot_key_rf,
+            self.config.base_rf
+        );
+
+        // Invariant 4: Delegate to hot key detector invariants
+        self.hotkey_detector.verify_invariants();
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new(config: AdaptiveConfig) -> Self {
         AdaptiveReplicationManager {
             hotkey_detector: HotKeyDetector::new(config.hotkey_config.clone()),

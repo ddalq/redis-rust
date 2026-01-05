@@ -1,5 +1,6 @@
 pub mod anti_entropy;
 pub mod config;
+pub mod crdt_dst;
 pub mod gossip;
 pub mod gossip_router;
 pub mod hash_ring;

@@ -8,11 +8,25 @@ use crate::replication::state::ShardReplicaState;
 use crate::replication::gossip::GossipState;
 use crate::simulator::VirtualTime;
 use crate::streaming::DeltaSinkSender;
+use super::gossip_actor::GossipActorHandle;
 use parking_lot::RwLock;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+
+/// Gossip backend for replication
+///
+/// Supports both legacy lock-based and new actor-based approaches.
+/// The actor-based approach eliminates lock contention and follows
+/// the actor model for better testability.
+#[derive(Clone)]
+pub enum GossipBackend {
+    /// Legacy: Arc<RwLock<GossipState>> - shared mutable state with locks
+    Locked(Arc<RwLock<GossipState>>),
+    /// Actor-based: message passing, no locks (preferred)
+    Actor(GossipActorHandle),
+}
 
 const NUM_SHARDS: usize = 16;
 
@@ -110,10 +124,19 @@ impl ReplicatedShard {
 /// Generic over `T: TimeSource` for zero-cost abstraction:
 /// - Production: `ProductionTimeSource` (ZST, compiles to syscall)
 /// - Simulation: `SimulatedTimeSource` (virtual clock)
+///
+/// ## Gossip Backend
+///
+/// Supports both legacy lock-based and actor-based gossip:
+/// - `GossipBackend::Locked`: Arc<RwLock<GossipState>> - shared mutable state
+/// - `GossipBackend::Actor`: GossipActorHandle - message passing (preferred)
+///
+/// Use `with_gossip_actor()` or `with_gossip_actor_and_time()` for actor-based.
 pub struct ReplicatedShardedState<T: TimeSource = ProductionTimeSource> {
     shards: Vec<Arc<RwLock<ReplicatedShard>>>,
     config: ReplicationConfig,
-    gossip_state: Arc<RwLock<GossipState>>,
+    /// Gossip backend - supports both locked and actor-based modes
+    gossip_backend: GossipBackend,
     /// Optional delta sink for streaming persistence
     delta_sink: Option<DeltaSinkSender>,
     /// Time source for getting current time
@@ -122,14 +145,23 @@ pub struct ReplicatedShardedState<T: TimeSource = ProductionTimeSource> {
 
 /// Production-specific constructors
 impl ReplicatedShardedState<ProductionTimeSource> {
+    /// Create with lock-based gossip (legacy)
     pub fn new(config: ReplicationConfig) -> Self {
         Self::with_time_source(config, ProductionTimeSource::new())
+    }
+
+    /// Create with actor-based gossip (preferred)
+    ///
+    /// This is the recommended constructor for production as it eliminates
+    /// lock contention and follows the actor model.
+    pub fn with_gossip_actor(config: ReplicationConfig, gossip_handle: GossipActorHandle) -> Self {
+        Self::with_gossip_actor_and_time(config, gossip_handle, ProductionTimeSource::new())
     }
 }
 
 /// Generic implementation that works with any TimeSource
 impl<T: TimeSource> ReplicatedShardedState<T> {
-    /// Create with configuration and custom time source
+    /// Create with configuration and custom time source (lock-based gossip)
     pub fn with_time_source(config: ReplicationConfig, time_source: T) -> Self {
         let replica_id = ReplicaId::new(config.replica_id);
         let consistency_level = config.consistency_level;
@@ -143,7 +175,32 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         ReplicatedShardedState {
             shards,
             config,
-            gossip_state,
+            gossip_backend: GossipBackend::Locked(gossip_state),
+            delta_sink: None,
+            time_source,
+        }
+    }
+
+    /// Create with configuration, custom time source, and actor-based gossip (preferred)
+    ///
+    /// This is the recommended constructor as it eliminates lock contention
+    /// and follows the actor model for better testability.
+    pub fn with_gossip_actor_and_time(
+        config: ReplicationConfig,
+        gossip_handle: GossipActorHandle,
+        time_source: T,
+    ) -> Self {
+        let replica_id = ReplicaId::new(config.replica_id);
+        let consistency_level = config.consistency_level;
+
+        let shards = (0..NUM_SHARDS)
+            .map(|_| Arc::new(RwLock::new(ReplicatedShard::new(replica_id, consistency_level))))
+            .collect();
+
+        ReplicatedShardedState {
+            shards,
+            config,
+            gossip_backend: GossipBackend::Actor(gossip_handle),
             delta_sink: None,
             time_source,
         }
@@ -173,8 +230,16 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
             if let Some(delta) = delta {
                 // Send to gossip for replication
                 if self.config.enabled {
-                    let mut gossip = self.gossip_state.write();
-                    gossip.queue_deltas(vec![delta.clone()]);
+                    match &self.gossip_backend {
+                        GossipBackend::Locked(gossip_state) => {
+                            let mut gossip = gossip_state.write();
+                            gossip.queue_deltas(vec![delta.clone()]);
+                        }
+                        GossipBackend::Actor(handle) => {
+                            // Actor-based: fire-and-forget, no locks!
+                            handle.queue_deltas(vec![delta.clone()]);
+                        }
+                    }
                 }
 
                 // Send to streaming persistence if enabled
@@ -292,8 +357,37 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         &self.time_source
     }
 
-    pub fn get_gossip_state(&self) -> Arc<RwLock<GossipState>> {
-        self.gossip_state.clone()
+    /// Get the gossip backend
+    ///
+    /// Returns the configured gossip backend (either locked or actor-based).
+    pub fn gossip_backend(&self) -> &GossipBackend {
+        &self.gossip_backend
+    }
+
+    /// Get the gossip state (legacy lock-based)
+    ///
+    /// Returns Some if using lock-based gossip, None if using actor-based.
+    /// Prefer using `gossip_backend()` or `gossip_actor_handle()` instead.
+    pub fn get_gossip_state(&self) -> Option<Arc<RwLock<GossipState>>> {
+        match &self.gossip_backend {
+            GossipBackend::Locked(state) => Some(state.clone()),
+            GossipBackend::Actor(_) => None,
+        }
+    }
+
+    /// Get the gossip actor handle (actor-based)
+    ///
+    /// Returns Some if using actor-based gossip, None if using lock-based.
+    pub fn gossip_actor_handle(&self) -> Option<GossipActorHandle> {
+        match &self.gossip_backend {
+            GossipBackend::Locked(_) => None,
+            GossipBackend::Actor(handle) => Some(handle.clone()),
+        }
+    }
+
+    /// Check if using actor-based gossip
+    pub fn is_actor_based(&self) -> bool {
+        matches!(&self.gossip_backend, GossipBackend::Actor(_))
     }
 
     pub fn config(&self) -> &ReplicationConfig {
@@ -370,7 +464,7 @@ impl<T: TimeSource> Clone for ReplicatedShardedState<T> {
         ReplicatedShardedState {
             shards: self.shards.clone(),
             config: self.config.clone(),
-            gossip_state: self.gossip_state.clone(),
+            gossip_backend: self.gossip_backend.clone(),
             delta_sink: self.delta_sink.clone(),
             time_source: self.time_source.clone(),
         }

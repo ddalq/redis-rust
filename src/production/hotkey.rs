@@ -79,6 +79,39 @@ pub struct HotKeyDetector {
 }
 
 impl HotKeyDetector {
+    /// VOPR: Verify all invariants hold for this detector
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: access_counts.len() <= max_tracked_keys
+        debug_assert!(
+            self.access_counts.len() <= self.config.max_tracked_keys,
+            "Invariant violated: tracked {} keys but max is {}",
+            self.access_counts.len(),
+            self.config.max_tracked_keys
+        );
+
+        // Invariant 2: All access metrics must have consistent timestamps
+        for (key, metrics) in &self.access_counts {
+            debug_assert!(
+                metrics.first_access_ms <= metrics.last_access_ms,
+                "Invariant violated: key '{}' has first_access_ms > last_access_ms",
+                key
+            );
+
+            // Invariant 3: Total accesses must be > 0 for tracked keys
+            let total = metrics.read_count + metrics.write_count;
+            debug_assert!(
+                total > 0,
+                "Invariant violated: key '{}' has zero total accesses",
+                key
+            );
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new(config: HotKeyConfig) -> Self {
         HotKeyDetector {
             access_counts: HashMap::with_capacity(1024),

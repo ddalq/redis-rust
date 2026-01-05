@@ -1,7 +1,7 @@
 use super::data::*;
 use super::resp::RespValue;
 use super::resp_optimized::RespValueZeroCopy;
-use std::collections::HashMap;
+use ahash::AHashMap;
 use crate::simulator::VirtualTime;
 
 #[derive(Debug, Clone)]
@@ -871,10 +871,10 @@ impl Command {
 }
 
 pub struct CommandExecutor {
-    data: HashMap<String, Value>,
-    expirations: HashMap<String, VirtualTime>,
+    data: AHashMap<String, Value>,
+    expirations: AHashMap<String, VirtualTime>,
     current_time: VirtualTime,
-    access_times: HashMap<String, VirtualTime>,
+    access_times: AHashMap<String, VirtualTime>,
     #[allow(dead_code)]
     key_count: usize,
     commands_processed: usize,
@@ -1012,10 +1012,10 @@ impl Command {
 impl CommandExecutor {
     pub fn new() -> Self {
         CommandExecutor {
-            data: HashMap::new(),
-            expirations: HashMap::new(),
+            data: AHashMap::new(),
+            expirations: AHashMap::new(),
             current_time: VirtualTime::from_millis(0),
-            access_times: HashMap::new(),
+            access_times: AHashMap::new(),
             key_count: 0,
             commands_processed: 0,
             simulation_start_epoch: 0,
@@ -1051,34 +1051,87 @@ impl CommandExecutor {
     /// Direct expiration eviction - call this from TTL manager
     /// Returns the number of keys evicted
     pub fn evict_expired_direct(&mut self, current_time: VirtualTime) -> usize {
+        // TigerStyle: Capture pre-state for postcondition verification
+        #[cfg(debug_assertions)]
+        let pre_data_len = self.data.len();
+        #[cfg(debug_assertions)]
+        let pre_exp_len = self.expirations.len();
+
         self.current_time = current_time;
-        
+
         let expired_keys: Vec<String> = self.expirations
             .iter()
             .filter(|(_, &exp_time)| exp_time <= self.current_time)
             .map(|(k, _)| k.clone())
             .collect();
-        
+
         let count = expired_keys.len();
         for key in expired_keys {
             self.data.remove(&key);
             self.expirations.remove(&key);
             self.access_times.remove(&key);
         }
+
+        // TigerStyle: Postconditions
+        #[cfg(debug_assertions)]
+        {
+            debug_assert_eq!(
+                self.data.len(),
+                pre_data_len.saturating_sub(count),
+                "Postcondition: data size must decrease by evicted count"
+            );
+            debug_assert_eq!(
+                self.expirations.len(),
+                pre_exp_len.saturating_sub(count),
+                "Postcondition: expirations size must decrease by evicted count"
+            );
+            // No expired keys should remain
+            for (_, &exp_time) in &self.expirations {
+                debug_assert!(
+                    exp_time > self.current_time,
+                    "Postcondition: no expired keys should remain after eviction"
+                );
+            }
+        }
+
         count
     }
 
     fn evict_expired_keys(&mut self) {
+        // TigerStyle: Capture pre-state for postcondition verification
+        #[cfg(debug_assertions)]
+        let pre_data_len = self.data.len();
+
         let expired_keys: Vec<String> = self.expirations
             .iter()
             .filter(|(_, &exp_time)| exp_time <= self.current_time)
             .map(|(k, _)| k.clone())
             .collect();
 
+        #[cfg(debug_assertions)]
+        let evicted_count = expired_keys.len();
+
         for key in expired_keys {
             self.data.remove(&key);
             self.expirations.remove(&key);
             self.access_times.remove(&key);
+        }
+
+        // TigerStyle: Postconditions
+        #[cfg(debug_assertions)]
+        {
+            debug_assert_eq!(
+                self.data.len(),
+                pre_data_len.saturating_sub(evicted_count),
+                "Postcondition: data size must decrease by evicted count"
+            );
+            // No expired keys should remain
+            for (_, &exp_time) in &self.expirations {
+                debug_assert!(
+                    exp_time > self.current_time,
+                    "Postcondition: no expired keys should remain after eviction"
+                );
+            }
         }
     }
     
@@ -1122,7 +1175,7 @@ impl CommandExecutor {
     }
 
     /// Get read-only access to the data store
-    pub fn get_data(&self) -> &HashMap<String, Value> {
+    pub fn get_data(&self) -> &AHashMap<String, Value> {
         &self.data
     }
 
@@ -1362,7 +1415,11 @@ impl CommandExecutor {
             }
             
             Command::DecrBy(key, decrement) => {
-                self.incr_by_impl(key, -decrement)
+                // TigerStyle: Use checked_neg() to prevent overflow when decrement == i64::MIN
+                match decrement.checked_neg() {
+                    Some(negated) => self.incr_by_impl(key, negated),
+                    None => RespValue::Error("ERR value is out of range".to_string()),
+                }
             }
             
             Command::Append(key, value) => {
@@ -1961,7 +2018,10 @@ impl CommandExecutor {
     }
 
     fn incr_by_impl(&mut self, key: &str, increment: i64) -> RespValue {
-        match self.get_value_mut(key) {
+        // TigerStyle: Precondition
+        debug_assert!(!key.is_empty(), "Precondition: key must not be empty");
+
+        let response = match self.get_value_mut(key) {
             Some(Value::String(s)) => {
                 let current = match s.to_string().parse::<i64>() {
                     Ok(n) => n,
@@ -1981,7 +2041,21 @@ impl CommandExecutor {
                 self.access_times.insert(key.to_string(), self.current_time);
                 RespValue::Integer(increment)
             }
+        };
+
+        // TigerStyle: Postcondition - verify stored value matches returned value
+        #[cfg(debug_assertions)]
+        if let RespValue::Integer(result) = &response {
+            if let Some(Value::String(s)) = self.data.get(key) {
+                debug_assert_eq!(
+                    s.to_string().parse::<i64>().ok(),
+                    Some(*result),
+                    "Postcondition: stored value must equal returned value"
+                );
+            }
         }
+
+        response
     }
 
     fn matches_glob_pattern(&self, key: &str, pattern: &str) -> bool {

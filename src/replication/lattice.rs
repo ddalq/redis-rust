@@ -62,6 +62,29 @@ pub struct LwwRegister<T> {
 }
 
 impl<T: Clone> LwwRegister<T> {
+    /// VOPR: Verify all invariants hold for this register
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: If tombstone is true, get() must return None
+        if self.tombstone {
+            debug_assert!(
+                self.get().is_none(),
+                "Invariant violated: get() must return None when tombstoned"
+            );
+        }
+        // Invariant 2: If tombstone is false and value is Some, get() must return Some
+        if !self.tombstone && self.value.is_some() {
+            debug_assert!(
+                self.get().is_some(),
+                "Invariant violated: get() must return Some when not tombstoned and value exists"
+            );
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new(replica_id: ReplicaId) -> Self {
         LwwRegister {
             value: None,
@@ -115,6 +138,32 @@ pub struct VectorClock {
 }
 
 impl VectorClock {
+    /// VOPR: Verify all invariants hold for this vector clock
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: No zero entries should be stored (they are semantically equivalent to absent)
+        for (&replica_id, &count) in &self.clocks {
+            debug_assert!(
+                count > 0,
+                "Invariant violated: replica {:?} has zero count (should be removed)",
+                replica_id
+            );
+        }
+
+        // Invariant 2: get() must return stored value or 0 for absent keys
+        for (&replica_id, &count) in &self.clocks {
+            debug_assert_eq!(
+                self.get(&replica_id),
+                count,
+                "Invariant violated: get() must return stored value"
+            );
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new() -> Self {
         VectorClock {
             clocks: HashMap::new(),
@@ -191,6 +240,30 @@ pub struct GCounter {
 }
 
 impl GCounter {
+    /// VOPR: Verify all invariants hold for this counter
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: value() must equal sum of all counts
+        let computed_sum: u64 = self.counts.values().sum();
+        debug_assert_eq!(
+            self.value(),
+            computed_sum,
+            "Invariant violated: value() must equal sum of counts"
+        );
+
+        // Invariant 2: is_empty() must be true iff value() == 0
+        let is_zero = self.value() == 0;
+        debug_assert_eq!(
+            self.is_empty(),
+            is_zero || self.counts.is_empty(),
+            "Invariant violated: is_empty() inconsistent with value()"
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new() -> Self {
         GCounter {
             counts: HashMap::new(),
@@ -264,6 +337,33 @@ pub struct PNCounter {
 }
 
 impl PNCounter {
+    /// VOPR: Verify all invariants hold for this counter
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: Both internal counters must be valid
+        self.positive.verify_invariants();
+        self.negative.verify_invariants();
+
+        // Invariant 2: value() must equal positive - negative
+        let expected_value = self.positive.value() as i64 - self.negative.value() as i64;
+        debug_assert_eq!(
+            self.value(),
+            expected_value,
+            "Invariant violated: value() must equal positive.value() - negative.value()"
+        );
+
+        // Invariant 3: is_empty() must be true iff both counters are empty
+        debug_assert_eq!(
+            self.is_empty(),
+            self.positive.is_empty() && self.negative.is_empty(),
+            "Invariant violated: is_empty() inconsistent with internal counters"
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new() -> Self {
         PNCounter {
             positive: GCounter::new(),
@@ -339,6 +439,35 @@ impl<T: Clone + Eq + Hash> Default for GSet<T> {
 }
 
 impl<T: Clone + Eq + Hash> GSet<T> {
+    /// VOPR: Verify all invariants hold for this set
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: len() must equal elements.len()
+        debug_assert_eq!(
+            self.len(),
+            self.elements.len(),
+            "Invariant violated: len() must equal elements.len()"
+        );
+
+        // Invariant 2: is_empty() must be consistent with len()
+        debug_assert_eq!(
+            self.is_empty(),
+            self.elements.is_empty(),
+            "Invariant violated: is_empty() inconsistent with elements.is_empty()"
+        );
+
+        // Invariant 3: is_empty() must be true iff len() == 0
+        debug_assert_eq!(
+            self.is_empty(),
+            self.len() == 0,
+            "Invariant violated: is_empty() inconsistent with len() == 0"
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new() -> Self {
         GSet {
             elements: HashSet::new(),
@@ -421,6 +550,50 @@ impl<T: Clone + Eq + Hash> Default for ORSet<T> {
 }
 
 impl<T: Clone + Eq + Hash> ORSet<T> {
+    /// VOPR: Verify all invariants hold for this set
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: No empty tag sets should be stored
+        for (_elem, tags) in &self.elements {
+            debug_assert!(
+                !tags.is_empty(),
+                "Invariant violated: element has empty tag set (should be removed)"
+            );
+        }
+
+        // Invariant 2: All tags must have sequence < next_sequence for their replica
+        for (_, tags) in &self.elements {
+            for tag in tags {
+                let next_seq = self.next_sequence.get(&tag.replica_id).copied().unwrap_or(0);
+                debug_assert!(
+                    tag.sequence < next_seq,
+                    "Invariant violated: tag {:?} has sequence >= next_sequence {}",
+                    tag,
+                    next_seq
+                );
+            }
+        }
+
+        // Invariant 3: len() must count only elements with non-empty tag sets
+        let expected_len = self.elements.iter().filter(|(_, tags)| !tags.is_empty()).count();
+        debug_assert_eq!(
+            self.len(),
+            expected_len,
+            "Invariant violated: len() must count elements with non-empty tag sets"
+        );
+
+        // Invariant 4: is_empty() must be consistent with len()
+        debug_assert_eq!(
+            self.is_empty(),
+            self.len() == 0,
+            "Invariant violated: is_empty() inconsistent with len() == 0"
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new() -> Self {
         ORSet {
             elements: HashMap::new(),

@@ -3,6 +3,25 @@ use crossbeam::queue::ArrayQueue;
 use bytes::BytesMut;
 use tokio::sync::Semaphore;
 
+/// Error returned when connection pool operations fail
+#[derive(Debug)]
+pub enum ConnectionPoolError {
+    /// Semaphore was closed (typically during shutdown)
+    SemaphoreClosed,
+}
+
+impl std::fmt::Display for ConnectionPoolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionPoolError::SemaphoreClosed => {
+                write!(f, "Connection pool semaphore closed")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConnectionPoolError {}
+
 pub struct ConnectionPool {
     buffer_pool: Arc<BufferPoolAsync>,
     max_connections: Arc<Semaphore>,
@@ -16,8 +35,13 @@ impl ConnectionPool {
         }
     }
 
-    pub async fn acquire_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.max_connections.clone().acquire_owned().await.unwrap()
+    /// TigerStyle: Return Result instead of panicking on semaphore close
+    pub async fn acquire_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, ConnectionPoolError> {
+        self.max_connections
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| ConnectionPoolError::SemaphoreClosed)
     }
 
     pub fn acquire_buffer(&self) -> BytesMut {

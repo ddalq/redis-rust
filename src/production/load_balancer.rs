@@ -102,6 +102,66 @@ pub struct ShardLoadBalancer {
 }
 
 impl ShardLoadBalancer {
+    /// VOPR: Verify all invariants hold for this load balancer
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: min_shards <= num_shards <= max_shards
+        debug_assert!(
+            self.num_shards >= self.config.min_shards,
+            "Invariant violated: num_shards {} < min_shards {}",
+            self.num_shards,
+            self.config.min_shards
+        );
+        debug_assert!(
+            self.num_shards <= self.config.max_shards,
+            "Invariant violated: num_shards {} > max_shards {}",
+            self.num_shards,
+            self.config.max_shards
+        );
+
+        // Invariant 2: shard_metrics should have entries for all shards
+        debug_assert_eq!(
+            self.shard_metrics.len(),
+            self.num_shards,
+            "Invariant violated: shard_metrics.len() {} != num_shards {}",
+            self.shard_metrics.len(),
+            self.num_shards
+        );
+
+        // Invariant 3: Each shard metric should have matching shard_id
+        for (&id, metrics) in &self.shard_metrics {
+            debug_assert_eq!(
+                id,
+                metrics.shard_id,
+                "Invariant violated: shard_metrics key {} != metrics.shard_id {}",
+                id,
+                metrics.shard_id
+            );
+        }
+
+        // Invariant 4: ops_per_second should be non-negative
+        for (&id, metrics) in &self.shard_metrics {
+            debug_assert!(
+                metrics.ops_per_second >= 0.0,
+                "Invariant violated: shard {} has negative ops_per_second {}",
+                id,
+                metrics.ops_per_second
+            );
+        }
+
+        // Invariant 5: config consistency (min <= max)
+        debug_assert!(
+            self.config.min_shards <= self.config.max_shards,
+            "Invariant violated: min_shards {} > max_shards {}",
+            self.config.min_shards,
+            self.config.max_shards
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new(num_shards: usize, config: LoadBalancerConfig) -> Self {
         let mut shard_metrics = HashMap::new();
         for i in 0..num_shards {
@@ -165,8 +225,13 @@ impl ShardLoadBalancer {
         let max_load = loads.iter().map(|(_, l)| *l).fold(f64::MIN, f64::max);
 
         // Find most and least loaded shards
-        let most_loaded = loads.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        let least_loaded = loads.iter().min_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        // TigerStyle: Use unwrap_or for NaN safety instead of unwrap
+        let most_loaded = loads.iter().max_by(|a, b| {
+            a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let least_loaded = loads.iter().min_by(|a, b| {
+            a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Check for imbalance
         if min_load > 0.0 && max_load / min_load > self.config.max_imbalance {

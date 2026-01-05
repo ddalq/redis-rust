@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+use ahash::{AHashMap, AHashSet};
 use std::cmp::Ordering;
 use serde::{Serialize, Deserialize};
 
@@ -319,13 +320,13 @@ impl RedisList {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RedisSet {
-    members: HashSet<String>,
+    members: AHashSet<String>,
 }
 
 impl RedisSet {
     pub fn new() -> Self {
         RedisSet {
-            members: HashSet::new(),
+            members: AHashSet::new(),
         }
     }
 
@@ -455,13 +456,13 @@ impl RedisSet {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RedisHash {
-    fields: HashMap<String, SDS>,
+    fields: AHashMap<String, SDS>,
 }
 
 impl RedisHash {
     pub fn new() -> Self {
         RedisHash {
-            fields: HashMap::new(),
+            fields: AHashMap::new(),
         }
     }
 
@@ -469,7 +470,7 @@ impl RedisHash {
     /// Called in debug builds after every mutation
     #[cfg(debug_assertions)]
     fn verify_invariants(&self) {
-        // Invariant 1: len() must match actual HashMap size
+        // Invariant 1: len() must match actual AHashMap size
         debug_assert_eq!(
             self.len(),
             self.fields.len(),
@@ -611,14 +612,14 @@ impl RedisHash {
 
 #[derive(Clone, Debug)]
 pub struct RedisSortedSet {
-    members: HashMap<String, f64>,
+    members: AHashMap<String, f64>,
     sorted_members: Vec<(String, f64)>,
 }
 
 impl RedisSortedSet {
     pub fn new() -> Self {
         RedisSortedSet {
-            members: HashMap::new(),
+            members: AHashMap::new(),
             sorted_members: Vec::new(),
         }
     }
@@ -626,7 +627,7 @@ impl RedisSortedSet {
     /// VOPR: Verify all invariants hold for this sorted set
     #[cfg(debug_assertions)]
     fn verify_invariants(&self) {
-        // Invariant 1: len() must match actual HashMap size
+        // Invariant 1: len() must match actual AHashMap size
         debug_assert_eq!(
             self.len(),
             self.members.len(),
@@ -653,12 +654,12 @@ impl RedisSortedSet {
             "Invariant violated: sorted_members must be sorted by (score, member)"
         );
 
-        // Invariant 5: Every member in HashMap must be in sorted_members with matching score
+        // Invariant 5: Every member in AHashMap must be in sorted_members with matching score
         for (member, score) in &self.members {
             let found = self.sorted_members.iter().find(|(m, _)| m == member);
             debug_assert!(
                 found.is_some(),
-                "Invariant violated: member '{}' in HashMap but not in sorted_members",
+                "Invariant violated: member '{}' in AHashMap but not in sorted_members",
                 member
             );
             debug_assert_eq!(
@@ -669,17 +670,17 @@ impl RedisSortedSet {
             );
         }
 
-        // Invariant 6: Every member in sorted_members must be in HashMap
+        // Invariant 6: Every member in sorted_members must be in AHashMap
         for (member, score) in &self.sorted_members {
             debug_assert!(
                 self.members.contains_key(member),
-                "Invariant violated: member '{}' in sorted_members but not in HashMap",
+                "Invariant violated: member '{}' in sorted_members but not in AHashMap",
                 member
             );
             debug_assert_eq!(
                 self.members.get(member),
                 Some(score),
-                "Invariant violated: score mismatch for member '{}' in HashMap",
+                "Invariant violated: score mismatch for member '{}' in AHashMap",
                 member
             );
         }

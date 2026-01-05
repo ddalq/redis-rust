@@ -47,7 +47,14 @@ impl OptimizedRedisServer {
                     let metrics_clone = metrics.clone();
 
                     tokio::spawn(async move {
-                        let _permit = pool.acquire_permit().await;
+                        // TigerStyle: Handle Result instead of unwrap
+                        let _permit = match pool.acquire_permit().await {
+                            Ok(permit) => permit,
+                            Err(e) => {
+                                tracing::warn!("Failed to acquire connection permit: {}", e);
+                                return;
+                            }
+                        };
 
                         let handler = OptimizedConnectionHandler::new(
                             stream,

@@ -148,6 +148,42 @@ pub struct GossipState {
 }
 
 impl GossipState {
+    /// VOPR: Verify all invariants hold for this gossip state
+    #[cfg(debug_assertions)]
+    pub fn verify_invariants(&self) {
+        // Invariant 1: replica_id must match config
+        debug_assert_eq!(
+            self.replica_id.0,
+            self.config.replica_id,
+            "Invariant violated: replica_id mismatch"
+        );
+
+        // Invariant 2: All targeted messages must have valid target
+        for msg in &self.outbound_queue {
+            if let Some(target) = msg.target {
+                // Target should not be self
+                debug_assert_ne!(
+                    target,
+                    self.replica_id,
+                    "Invariant violated: targeted message to self"
+                );
+            }
+        }
+
+        // Invariant 3: All outbound messages must have matching source replica
+        for routed in &self.outbound_queue {
+            debug_assert_eq!(
+                routed.message.source_replica(),
+                self.replica_id,
+                "Invariant violated: outbound message source doesn't match replica_id"
+            );
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn verify_invariants(&self) {}
+
     pub fn new(config: ReplicationConfig) -> Self {
         GossipState {
             replica_id: ReplicaId::new(config.replica_id),

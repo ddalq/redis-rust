@@ -204,8 +204,11 @@ impl<S: ObjectStore + Clone + 'static, C: StreamingClock> StreamingPersistence<S
         let delta_size = estimate_delta_size(&delta);
 
         self.buffer.push(delta);
-        self.buffer_size += delta_size;
-        self.stats.deltas_pushed += 1;
+        // TigerStyle: Use checked arithmetic for buffer size to catch corruption
+        self.buffer_size = self.buffer_size.checked_add(delta_size)
+            .expect("buffer_size overflow - indicates corrupted state or logic error");
+        // TigerStyle: Use saturating arithmetic for stats (counters, non-critical)
+        self.stats.deltas_pushed = self.stats.deltas_pushed.saturating_add(1);
 
         Ok(())
     }
@@ -293,9 +296,10 @@ impl<S: ObjectStore + Clone + 'static, C: StreamingClock> StreamingPersistence<S
         self.manifest_manager.save(&self.manifest).await?;
 
         // Update stats
-        self.stats.segments_written += 1;
-        self.stats.bytes_written += bytes_written;
-        self.stats.manifest_updates += 1;
+        // TigerStyle: Use saturating arithmetic for stats (counters, non-critical)
+        self.stats.segments_written = self.stats.segments_written.saturating_add(1);
+        self.stats.bytes_written = self.stats.bytes_written.saturating_add(bytes_written);
+        self.stats.manifest_updates = self.stats.manifest_updates.saturating_add(1);
 
         Ok(FlushResult {
             segment: Some(segment_info),
@@ -410,7 +414,8 @@ impl<S: ObjectStore + Clone + 'static> PersistenceWorker<S> {
                 if p.should_flush() {
                     if let Err(e) = p.flush().await {
                         eprintln!("Error flushing: {}", e);
-                        p.stats.flush_errors += 1;
+                        // TigerStyle: Use saturating arithmetic for error counter
+                        p.stats.flush_errors = p.stats.flush_errors.saturating_add(1);
                     }
                 }
             }

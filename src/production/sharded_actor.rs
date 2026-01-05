@@ -493,8 +493,12 @@ impl<T: TimeSource> ShardedActorState<T> {
 
                 // For single-shard MSET (common case), execute directly
                 if shard_batches.len() == 1 {
-                    let (shard_idx, batch) = shard_batches.into_iter().next().unwrap();
-                    self.shards[shard_idx].execute(Command::BatchSet(batch), virtual_time).await;
+                    // TigerStyle: Use explicit pattern match instead of unwrap
+                    if let Some((shard_idx, batch)) = shard_batches.into_iter().next() {
+                        self.shards[shard_idx].execute(Command::BatchSet(batch), virtual_time).await;
+                    } else {
+                        debug_assert!(false, "Invariant violated: single-element iterator must yield one item");
+                    }
                 } else {
                     // Multi-shard: send all concurrently
                     let futures: Vec<_> = shard_batches.into_iter().map(|(shard_idx, batch)| {

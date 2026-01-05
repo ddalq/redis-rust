@@ -12,14 +12,14 @@ services:
           cpus: '2'
           memory: 1G
 
-  # Our Rust implementation (listens on port 3000)
+  # Our Rust implementation (listens on port 6379, exposed as 3000)
   redis-rust:
     build:
       context: ..
       dockerfile: docker-benchmark/Dockerfile.redis-rust
     container_name: redis-rust
     ports:
-      - "3000:3000"
+      - "3000:6379"
     environment:
       - RUST_LOG=warn
     deploy:

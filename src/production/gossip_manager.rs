@@ -1,6 +1,7 @@
 use crate::replication::{ReplicaId, ReplicationConfig};
 use crate::replication::gossip::{GossipMessage, GossipState, RoutedMessage};
 use crate::replication::state::ReplicationDelta;
+use super::gossip_actor::GossipActorHandle;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -215,6 +216,82 @@ impl GossipManager {
             }
             Err(e) => {
                 warn!("Failed to connect to peer {}: {}", addr, e);
+            }
+        }
+    }
+
+    /// Actor-based gossip loop - uses GossipActorHandle instead of Arc<RwLock<>>
+    ///
+    /// This is the preferred way to run the gossip loop as it eliminates
+    /// lock contention and follows the actor model.
+    pub async fn start_gossip_loop_with_actor(
+        config: ReplicationConfig,
+        gossip_handle: GossipActorHandle,
+        collect_deltas: impl Fn() -> Vec<ReplicationDelta> + Send + Sync + 'static,
+    ) {
+        let gossip_interval = config.gossip_interval();
+        let mut ticker = interval(gossip_interval);
+        let peers = config.peers.clone();
+        let selective_mode = config.uses_selective_gossip();
+
+        // Build peer address map for selective routing
+        let peer_map: HashMap<ReplicaId, String> = peers.iter().enumerate().map(|(i, addr)| {
+            let peer_id = if (i as u64) >= config.replica_id {
+                (i as u64) + 2 // Skip our own ID
+            } else {
+                (i as u64) + 1
+            };
+            (ReplicaId::new(peer_id), addr.clone())
+        }).collect();
+
+        info!(
+            "Starting actor-based gossip loop with {} peers, interval {:?}, selective: {}",
+            peers.len(),
+            gossip_interval,
+            selective_mode
+        );
+
+        loop {
+            ticker.tick().await;
+
+            let deltas = collect_deltas();
+
+            // Use actor handle - no locks!
+            gossip_handle.advance_epoch();
+            gossip_handle.queue_deltas(deltas);
+            let routed_messages = gossip_handle.drain_outbound().await;
+
+            if routed_messages.is_empty() {
+                continue;
+            }
+
+            // Send each routed message
+            for routed in routed_messages {
+                let data = match routed.message.serialize() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        error!("Failed to serialize gossip message: {}", e);
+                        continue;
+                    }
+                };
+                let framed_data = Self::frame_message(&data);
+
+                match routed.target {
+                    Some(target_replica) => {
+                        // Targeted message: send to specific replica
+                        if let Some(addr) = peer_map.get(&target_replica) {
+                            Self::send_to_peer(addr, &framed_data).await;
+                        } else {
+                            debug!("No address for target replica {}", target_replica.0);
+                        }
+                    }
+                    None => {
+                        // Broadcast message: send to all peers
+                        for peer_addr in &peers {
+                            Self::send_to_peer(peer_addr, &framed_data).await;
+                        }
+                    }
+                }
             }
         }
     }
