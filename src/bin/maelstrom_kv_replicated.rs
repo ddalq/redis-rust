@@ -100,11 +100,16 @@ impl NodeState {
             .build()
             .expect("Failed to create tokio runtime");
 
+        // Must create state inside runtime context because it spawns actors
+        let state = rt.block_on(async {
+            ReplicatedShardedState::new(config)
+        });
+
         NodeState {
             node_id,
             replica_id,
             peers,
-            state: ReplicatedShardedState::new(config),
+            state,
             pending_deltas: Vec::new(),
             rt,
         }
