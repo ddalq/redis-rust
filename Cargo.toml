@@ -117,6 +117,28 @@ path = "src/bin/server_persistent.rs"
 name = "shadow-proxy"
 path = "src/bin/shadow_proxy.rs"
 
+[[bin]]
+name = "profile-benchmark"
+path = "src/bin/profile_benchmark.rs"
+
 [lib]
 name = "redis_sim"
 path = "src/lib.rs"
+
+# Release profile with LTO for maximum performance
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Profile for PGO instrumentation (generate profile data)
+[profile.release-instrumented]
+inherits = "release"
+lto = false
+strip = false
+
+# Profile for PGO-optimized build (use profile data)
+[profile.release-pgo]
+inherits = "release"
+lto = "fat"
