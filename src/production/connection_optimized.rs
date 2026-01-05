@@ -79,6 +79,24 @@ impl OptimizedConnectionHandler {
                         let mut commands_executed = 0;
                         let mut had_parse_error = false;
 
+                        // OPTIMIZATION: First, collect all parseable GET keys for batching
+                        let (get_keys, get_count) = self.collect_get_keys();
+
+                        if get_count >= 2 {
+                            // Batch execute multiple GETs concurrently
+                            let start = Instant::now();
+                            let results = self.state.fast_batch_get_pipeline(get_keys).await;
+                            let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+                            for response in &results {
+                                let success = !matches!(response, RespValue::Error(_));
+                                self.metrics.record_command("GET", duration_ms / results.len() as f64, success);
+                                Self::encode_resp_into(response, &mut self.write_buffer);
+                            }
+                            commands_executed += get_count;
+                        }
+
+                        // Process remaining commands sequentially
                         loop {
                             match self.try_execute_command().await {
                                 CommandResult::Executed => {
@@ -166,6 +184,66 @@ impl OptimizedConnectionHandler {
             Ok(None) => CommandResult::NeedMoreData,
             Err(e) => CommandResult::ParseError(e),
         }
+    }
+
+    /// Collect all parseable GET keys from the buffer for batched execution
+    ///
+    /// Returns (keys, count) - the keys to GET and how many commands were parsed.
+    /// Consumes the GET commands from the buffer.
+    #[inline]
+    fn collect_get_keys(&mut self) -> (Vec<bytes::Bytes>, usize) {
+        let mut keys = Vec::new();
+        const HEADER_LEN: usize = 14; // "*2\r\n$3\r\nGET\r\n"
+
+        loop {
+            let buf = &self.buffer[..];
+
+            // Need minimum bytes to detect GET
+            if buf.len() < HEADER_LEN + 1 {
+                break;
+            }
+
+            // Check for GET command
+            if !buf.starts_with(b"*2\r\n$3\r\nGET\r\n") && !buf.starts_with(b"*2\r\n$3\r\nget\r\n") {
+                break; // Not a GET, stop collecting
+            }
+
+            // Parse key length: $<len>\r\n
+            let after_header = &buf[HEADER_LEN..];
+            if after_header.is_empty() || after_header[0] != b'$' {
+                break;
+            }
+
+            // Find \r\n after key length
+            let Some(crlf_pos) = memchr::memchr(b'\r', &after_header[1..]) else {
+                break; // Need more data
+            };
+            let len_end = crlf_pos + 1;
+
+            // Parse key length
+            let len_str = &after_header[1..len_end];
+            let Ok(key_len) = std::str::from_utf8(len_str).ok().and_then(|s| s.parse::<usize>().ok()).ok_or(()) else {
+                break; // Invalid, stop
+            };
+
+            // Check we have complete key + trailing \r\n
+            let key_start = HEADER_LEN + 1 + len_end + 1;
+            let total_needed = key_start + key_len + 2;
+
+            if buf.len() < total_needed {
+                break; // Need more data
+            }
+
+            // Extract key
+            let key = bytes::Bytes::copy_from_slice(&buf[key_start..key_start + key_len]);
+            keys.push(key);
+
+            // Consume this GET from buffer
+            let _ = self.buffer.split_to(total_needed);
+        }
+
+        let count = keys.len();
+        (keys, count)
     }
 
     /// Fast path for GET/SET commands - bypasses full RESP parsing

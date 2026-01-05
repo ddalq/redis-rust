@@ -88,6 +88,11 @@ pub enum ShardMessage {
         value: bytes::Bytes,
         response_tx: oneshot::Sender<RespValue>,
     },
+    /// Fast batch GET - multiple keys in single message for pipelining
+    FastBatchGet {
+        keys: Vec<bytes::Bytes>,
+        response_tx: oneshot::Sender<Vec<RespValue>>,
+    },
 }
 
 pub struct ShardActor {
@@ -135,6 +140,15 @@ impl ShardActor {
                     let key_str = unsafe { std::str::from_utf8_unchecked(&key) };
                     let response = self.executor.set_direct(key_str, &value);
                     let _ = response_tx.send(response);
+                }
+                ShardMessage::FastBatchGet { keys, response_tx } => {
+                    // Batch GET: process multiple keys in single message
+                    let mut results = Vec::with_capacity(keys.len());
+                    for key in keys {
+                        let key_str = unsafe { std::str::from_utf8_unchecked(&key) };
+                        results.push(self.executor.get_direct(key_str));
+                    }
+                    let _ = response_tx.send(results);
                 }
             }
         }
@@ -203,6 +217,24 @@ impl ShardHandle {
 
         response_rx.await.unwrap_or_else(|_| {
             RespValue::Error("ERR shard response failed".to_string())
+        })
+    }
+
+    /// Fast batch GET - multiple keys in single actor message
+    #[inline]
+    pub async fn fast_batch_get(&self, keys: Vec<bytes::Bytes>) -> Vec<RespValue> {
+        if keys.is_empty() {
+            return Vec::new();
+        }
+        let (response_tx, response_rx) = oneshot::channel();
+        let msg = ShardMessage::FastBatchGet { keys, response_tx };
+
+        if self.tx.send(msg).is_err() {
+            return vec![RespValue::Error("ERR shard unavailable".to_string())];
+        }
+
+        response_rx.await.unwrap_or_else(|_| {
+            vec![RespValue::Error("ERR shard response failed".to_string())]
         })
     }
 
@@ -475,6 +507,54 @@ impl<T: TimeSource> ShardedActorState<T> {
         let shard_idx = hash_key_bytes(&key, self.num_shards);
         debug_assert!(shard_idx < self.shards.len(), "Shard index out of bounds");
         self.shards[shard_idx].fast_set(key, value).await
+    }
+
+    /// Execute batched GETs concurrently across shards
+    ///
+    /// Groups keys by shard, sends batch requests concurrently, and reconstructs
+    /// results in original order. This reduces channel round-trips from N to num_shards.
+    ///
+    /// Returns Vec<RespValue> in the same order as input keys.
+    pub async fn fast_batch_get_pipeline(&self, keys: Vec<bytes::Bytes>) -> Vec<RespValue> {
+        if keys.is_empty() {
+            return Vec::new();
+        }
+
+        // Group keys by shard, tracking original indices for result reconstruction
+        let mut shard_batches: Vec<Vec<(usize, bytes::Bytes)>> = vec![Vec::new(); self.num_shards];
+        for (idx, key) in keys.iter().enumerate() {
+            let shard_idx = hash_key_bytes(key, self.num_shards);
+            shard_batches[shard_idx].push((idx, key.clone()));
+        }
+
+        // Prepare results vector
+        let mut results = vec![RespValue::BulkString(None); keys.len()];
+
+        // Send batch requests to all non-empty shards concurrently
+        let mut futures = Vec::new();
+        for (shard_idx, batch) in shard_batches.into_iter().enumerate() {
+            if !batch.is_empty() {
+                let indices: Vec<usize> = batch.iter().map(|(idx, _)| *idx).collect();
+                let shard_keys: Vec<bytes::Bytes> = batch.into_iter().map(|(_, key)| key).collect();
+                let shard = &self.shards[shard_idx];
+                futures.push(async move {
+                    let shard_results = shard.fast_batch_get(shard_keys).await;
+                    (indices, shard_results)
+                });
+            }
+        }
+
+        // Await all shard responses concurrently
+        let all_results = futures::future::join_all(futures).await;
+
+        // Reconstruct results in original order
+        for (indices, shard_results) in all_results {
+            for (i, resp) in indices.into_iter().zip(shard_results.into_iter()) {
+                results[i] = resp;
+            }
+        }
+
+        results
     }
 
     pub async fn execute(&self, cmd: &Command) -> RespValue {

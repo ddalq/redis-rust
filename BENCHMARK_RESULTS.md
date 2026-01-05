@@ -363,6 +363,29 @@ The Tiger Style Redis server demonstrates:
 - **331+ tests** covering consistency, replication, persistence, and chaos scenarios
 - **S3-persistent mode** competitive with Redis AOF (+4-41% on pipelined)
 
+### macOS Docker Desktop Results (January 5, 2026)
+
+Different environment for comparison - Docker Desktop on macOS (runs through VM).
+
+**System:** macOS Darwin 24.4.0, Docker Desktop
+
+| Operation | Redis 7.4 | Rust | Relative | Notes |
+|-----------|-----------|------|----------|-------|
+| SET (P=1) | 189,036 req/s | 173,310 req/s | **91.7%** | Good |
+| GET (P=1) | 193,050 req/s | 171,821 req/s | **89.0%** | Good |
+| SET (P=16) | 1,408,450 req/s | 1,176,470 req/s | **83.5%** | Good |
+| GET (P=16) | 1,234,567 req/s | 1,098,901 req/s | **89.0%** | Good |
+
+**Latency (P=16):**
+
+| Percentile | Redis GET | Rust GET | Notes |
+|------------|-----------|----------|-------|
+| p50 | 0.455 ms | 0.639 ms | 1.4x |
+| p95 | 0.975 ms | 1.103 ms | 1.1x |
+| p99 | 2.431 ms | 1.927 ms | **Rust faster!** |
+
+**Optimization Applied:** Batched GET pipelining - multiple GET commands are grouped by shard and executed concurrently, reducing actor channel round-trips from N to num_shards.
+
 ### Known Limitations
 
 1. **Streaming persistence**: Object store-based (S3/LocalFs), not traditional RDB/AOF
