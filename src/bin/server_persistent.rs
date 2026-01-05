@@ -188,7 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
 
     // Create state
-    let state = ReplicatedShardedState::new(repl_config);
+    let mut state = ReplicatedShardedState::new(repl_config);
 
     // Ensure persistence directory exists for localfs
     if config.store_type == "localfs" {
@@ -212,14 +212,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     let (worker_handles, sender) = integration.start_workers().await?;
-    // Note: state is moved to Arc below, so we can't modify it after this point
-    // The delta_sink is set through the integration layer
+
+    // Connect delta sink BEFORE wrapping state in Arc
+    state.set_delta_sink(sender);
 
     let state = Arc::new(state);
-
-    // Set delta sink - need interior mutability pattern
-    // Actually, we need to set this before wrapping in Arc
-    // For now, streaming persistence works through the integration layer
 
     println!("Starting server...");
     println!();
