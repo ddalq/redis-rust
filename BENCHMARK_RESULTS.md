@@ -44,6 +44,17 @@ To ensure a fair comparison, we run both servers in identical Docker containers 
 
 **Conclusion:** Our implementation achieves **~93-96% of Redis 7.4 performance** on single operations.
 
+### Latency Distribution (Pipeline=1)
+
+| Percentile | Redis 7.4 SET | Rust SET | Redis 7.4 GET | Rust GET |
+|------------|---------------|----------|---------------|----------|
+| p50 | TBD | TBD | TBD | TBD |
+| p95 | TBD | TBD | TBD | TBD |
+| p99 | TBD | TBD | TBD | TBD |
+| p99.9 | TBD | TBD | TBD | TBD |
+
+> **Note**: Run `docker-benchmark/run-detailed-benchmarks.sh` to generate latency data.
+
 ### Pipelined Performance (Pipeline=16)
 
 | Operation | Official Redis 7.4 | Rust Implementation | Relative |
@@ -92,6 +103,17 @@ Fair comparison between Redis 7.4 with AOF persistence vs Rust implementation wi
 | GET | 877,193 req/sec | **909,090 req/sec** | **+4%** |
 
 **Result:** Our S3-persistent implementation is **4-41% FASTER than Redis AOF** on pipelined workloads!
+
+### Resource Usage Under Load
+
+| Metric | Redis 7.4 | Rust Implementation | Notes |
+|--------|-----------|---------------------|-------|
+| Peak CPU % | TBD | TBD | During 50-client benchmark |
+| Avg CPU % | TBD | TBD | During 50-client benchmark |
+| RSS (idle) | TBD | TBD | After FLUSHALL |
+| RSS (100k keys) | TBD | TBD | 64-byte values |
+
+> **Note**: Run `docker-benchmark/run-detailed-benchmarks.sh` to generate resource data.
 
 **Why persistent writes are competitive:**
 1. Async delta streaming (writes don't block operations)
@@ -291,11 +313,39 @@ cargo run --bin benchmark --release
 ### Run Tests
 
 ```bash
-# All tests (316 total)
+# All tests (352 total)
 cargo test --release
 
 # Unit tests only
 cargo test --lib
+```
+
+### Reproduction Commands
+
+To reproduce the benchmark results:
+
+```bash
+# 1. Build the Docker images
+cd docker-benchmark
+docker compose build
+
+# 2. Run basic throughput comparison
+./run-benchmarks.sh
+
+# 3. Run detailed benchmarks with latency percentiles
+./run-detailed-benchmarks.sh
+
+# 4. View results
+ls -la results/
+```
+
+**Exact benchmark commands** (for transparency):
+```bash
+# Non-pipelined (P=1)
+redis-benchmark -p <port> -n 100000 -c 50 -P 1 -d 64 -r 10000 -t set,get --csv
+
+# Pipelined (P=16)
+redis-benchmark -p <port> -n 100000 -c 50 -P 16 -d 64 -r 10000 -t set,get --csv
 ```
 
 ## Conclusion

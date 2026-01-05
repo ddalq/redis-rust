@@ -1,10 +1,14 @@
-# Redis Cache - Production Server + Deterministic Simulator
+# Redis Cache - Deterministic Simulator + Experimental Server
 
-A production-ready, actor-based Redis cache server in Rust with distributed replication capabilities. Features both a deterministic simulator (FoundationDB/TigerBeetle-style testing) and a production server using Tiger Style principles with actor-based sharded architecture.
+An experimental, actor-based Redis-compatible cache server in Rust with distributed replication capabilities. Features both a deterministic simulator (FoundationDB/TigerBeetle-style testing) and an experimental server using Tiger Style principles with actor-based sharded architecture.
+
+> **Status**: Research project with production-oriented architecture and correctness tooling. Not yet a production Redis replacement. See [Redis Compatibility](#redis-compatibility) for semantic differences.
+
+> **Security Warning**: This server has **no authentication or access control**. Do NOT expose to untrusted networks or the public internet. Bind to localhost or use network-level access control (firewall, VPC).
 
 ## Features
 
-- **Production Redis Server**: Compatible with `redis-cli` and all Redis clients
+- **Redis-Compatible Server**: Compatible with `redis-cli` and all Redis clients (RESP2 protocol)
 - **Tiger Style Engineering**: Explicit over implicit, assertion-heavy, deterministic behavior
 - **50+ Redis Commands**: Full caching feature set (strings, lists, sets, hashes, sorted sets)
 - **Dynamic Shard Architecture**: Runtime-configurable shards with lock-free message passing
@@ -177,6 +181,43 @@ cargo test --all
 ### Server
 `PING`, `INFO`
 
+## Redis Compatibility
+
+### Wire Protocol
+| Protocol | Status |
+|----------|--------|
+| **RESP2** | Full support (compatible with all Redis clients) |
+| **RESP3** | Not supported |
+
+### Semantic Differences from Redis
+
+This implementation intentionally differs from Redis in several ways:
+
+| Behavior | Redis | This Implementation | Rationale |
+|----------|-------|---------------------|-----------|
+| **Multi-node Consistency** | Single-leader strong | Eventual/Causal (CRDT) | Coordination-free scalability |
+| **Transactions** | MULTI/EXEC atomic | Not supported | Conflicts with CRDT model |
+| **Keyspace Notifications** | Supported | Not supported | Not implemented |
+| **Eviction Policies** | LRU/LFU/Random/TTL | TTL-only | Simpler model |
+| **Memory Limits** | maxmemory + eviction | No memory limits | Not implemented |
+| **Persistence Model** | RDB snapshots / AOF log | Streaming to object store (S3) | Cloud-native design |
+| **Cluster Protocol** | Redis Cluster (hash slots) | Anna-style CRDT gossip | Different architecture |
+| **Blocking Operations** | BLPOP, BRPOP, etc. | Not supported | Not implemented |
+
+### Not Implemented (No Plans)
+These features conflict with the CRDT/eventual consistency architecture:
+- **Transactions**: MULTI, EXEC, WATCH, DISCARD
+- **Blocking operations**: BLPOP, BRPOP, BLMOVE, etc.
+- **Cluster commands**: CLUSTER *, READONLY, READWRITE
+
+### Not Implemented (Roadmap)
+These could be added without architectural changes:
+- **Pub/Sub**: PUBLISH, SUBSCRIBE, PSUBSCRIBE
+- **Lua scripting**: EVAL, EVALSHA, SCRIPT
+- **Streams**: XADD, XREAD, XRANGE, XGROUP
+- **Authentication**: AUTH, ACL commands
+- **TLS**: Encrypted connections
+
 ## Comparison with Official Redis
 
 | Feature | Official Redis 7.4 | This Implementation |
@@ -330,6 +371,27 @@ let metrics = Metrics::new(&DatadogConfig::from_env());
 - `dogstatsd` - DogStatsD metrics client
 - `opentelemetry` / `opentelemetry-datadog` - APM tracing
 - `tracing-opentelemetry` - Tracing integration
+
+## Security
+
+### Current Limitations
+- **No Authentication**: No AUTH command, no password protection
+- **No ACL**: No user-based access control
+- **No TLS**: No encrypted connections
+- **No Command Restrictions**: All commands available to all clients
+
+### Deployment Requirements
+1. **Never expose to public internet** - This is critical
+2. Bind to `127.0.0.1` or private network interfaces only
+3. Use network-level access control (iptables, security groups, VPC)
+4. Run in isolated container/namespace
+5. Monitor for unauthorized access attempts
+
+### Security Roadmap
+- [ ] AUTH command support
+- [ ] TLS encryption
+- [ ] Basic ACL (user-based permissions)
+- [ ] Command allowlist/denylist
 
 ## License
 
