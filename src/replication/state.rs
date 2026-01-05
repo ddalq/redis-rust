@@ -24,6 +24,8 @@ pub enum CrdtValue {
     GSet(GSet<String>),
     /// Observed-Remove set (supports remove)
     ORSet(ORSet<String>),
+    /// Hash map with per-field LWW semantics
+    Hash(HashMap<String, LwwRegister<SDS>>),
 }
 
 impl CrdtValue {
@@ -52,6 +54,11 @@ impl CrdtValue {
         CrdtValue::ORSet(ORSet::new())
     }
 
+    /// Create a new Hash
+    pub fn new_hash() -> Self {
+        CrdtValue::Hash(HashMap::new())
+    }
+
     /// Merge two CrdtValues of the same type.
     /// If types don't match, returns self (type mismatch is an error condition).
     pub fn merge(&self, other: &Self) -> Self {
@@ -61,6 +68,16 @@ impl CrdtValue {
             (CrdtValue::PNCounter(a), CrdtValue::PNCounter(b)) => CrdtValue::PNCounter(a.merge(b)),
             (CrdtValue::GSet(a), CrdtValue::GSet(b)) => CrdtValue::GSet(a.merge(b)),
             (CrdtValue::ORSet(a), CrdtValue::ORSet(b)) => CrdtValue::ORSet(a.merge(b)),
+            (CrdtValue::Hash(a), CrdtValue::Hash(b)) => {
+                // Merge each field using LWW semantics
+                let mut merged = a.clone();
+                for (field, b_lww) in b {
+                    merged.entry(field.clone())
+                        .and_modify(|a_lww| *a_lww = a_lww.merge(b_lww))
+                        .or_insert_with(|| b_lww.clone());
+                }
+                CrdtValue::Hash(merged)
+            }
             // Type mismatch: keep self (this shouldn't happen in normal operation)
             _ => self.clone(),
         }
@@ -74,6 +91,7 @@ impl CrdtValue {
             CrdtValue::PNCounter(_) => "pncounter",
             CrdtValue::GSet(_) => "gset",
             CrdtValue::ORSet(_) => "orset",
+            CrdtValue::Hash(_) => "hash",
         }
     }
 
@@ -158,6 +176,22 @@ impl CrdtValue {
     pub fn as_orset_mut(&mut self) -> Option<&mut ORSet<String>> {
         match self {
             CrdtValue::ORSet(os) => Some(os),
+            _ => None,
+        }
+    }
+
+    /// Get as Hash
+    pub fn as_hash(&self) -> Option<&HashMap<String, LwwRegister<SDS>>> {
+        match self {
+            CrdtValue::Hash(h) => Some(h),
+            _ => None,
+        }
+    }
+
+    /// Get as mutable Hash
+    pub fn as_hash_mut(&mut self) -> Option<&mut HashMap<String, LwwRegister<SDS>>> {
+        match self {
+            CrdtValue::Hash(h) => Some(h),
             _ => None,
         }
     }
@@ -322,6 +356,54 @@ impl ReplicatedValue {
     pub fn lww_mut(&mut self) -> Option<&mut LwwRegister<SDS>> {
         self.crdt.as_lww_mut()
     }
+
+    /// Check if this is a Hash value
+    pub fn is_hash(&self) -> bool {
+        matches!(self.crdt, CrdtValue::Hash(_))
+    }
+
+    /// Get the hash map (if this is a Hash value)
+    pub fn get_hash(&self) -> Option<&HashMap<String, LwwRegister<SDS>>> {
+        self.crdt.as_hash()
+    }
+
+    /// Get mutable hash map (if this is a Hash value)
+    pub fn get_hash_mut(&mut self) -> Option<&mut HashMap<String, LwwRegister<SDS>>> {
+        self.crdt.as_hash_mut()
+    }
+
+    /// Set a field in the hash (creates Hash if needed)
+    pub fn hash_set(&mut self, field: String, value: SDS, clock: &mut LamportClock) {
+        // Ensure we have a Hash value
+        if !self.is_hash() {
+            self.crdt = CrdtValue::new_hash();
+        }
+
+        if let CrdtValue::Hash(ref mut hash) = self.crdt {
+            let lww = hash.entry(field).or_insert_with(|| LwwRegister::new(clock.replica_id));
+            lww.set(value, clock);
+        }
+        self.timestamp = *clock;
+    }
+
+    /// Delete a field from the hash (marks as tombstone)
+    pub fn hash_delete(&mut self, field: &str, clock: &mut LamportClock) {
+        if let CrdtValue::Hash(ref mut hash) = self.crdt {
+            if let Some(lww) = hash.get_mut(field) {
+                lww.delete(clock);
+            }
+        }
+        self.timestamp = *clock;
+    }
+
+    /// Get a field from the hash
+    pub fn hash_get(&self, field: &str) -> Option<&SDS> {
+        if let CrdtValue::Hash(ref hash) = self.crdt {
+            hash.get(field).and_then(|lww| lww.get())
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -393,6 +475,49 @@ impl ShardReplicaState {
         } else {
             None
         }
+    }
+
+    /// Record a hash field write (HSET)
+    pub fn record_hash_write(&mut self, key: String, fields: Vec<(String, SDS)>) -> ReplicationDelta {
+        let mut replicated = self.replicated_keys
+            .remove(&key)
+            .unwrap_or_else(|| {
+                let mut rv = ReplicatedValue::new(self.replica_id);
+                rv.crdt = CrdtValue::new_hash();
+                rv
+            });
+
+        // Ensure it's a hash (in case key existed as different type)
+        if !replicated.is_hash() {
+            replicated.crdt = CrdtValue::new_hash();
+        }
+
+        for (field, value) in fields {
+            replicated.hash_set(field, value, &mut self.lamport_clock);
+        }
+
+        let delta = ReplicationDelta::new(key.clone(), replicated.clone(), self.replica_id);
+        self.replicated_keys.insert(key, replicated);
+        self.pending_deltas.push(delta.clone());
+        delta
+    }
+
+    /// Record a hash field delete (HDEL)
+    pub fn record_hash_delete(&mut self, key: String, fields: Vec<String>) -> Option<ReplicationDelta> {
+        if let Some(mut replicated) = self.replicated_keys.remove(&key) {
+            if replicated.is_hash() {
+                for field in fields {
+                    replicated.hash_delete(&field, &mut self.lamport_clock);
+                }
+                let delta = ReplicationDelta::new(key.clone(), replicated.clone(), self.replica_id);
+                self.replicated_keys.insert(key, replicated);
+                self.pending_deltas.push(delta.clone());
+                return Some(delta);
+            }
+            // Put back if not a hash
+            self.replicated_keys.insert(key, replicated);
+        }
+        None
     }
 
     pub fn apply_remote_delta(&mut self, delta: ReplicationDelta) {

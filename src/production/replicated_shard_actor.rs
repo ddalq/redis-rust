@@ -222,7 +222,20 @@ impl ReplicatedShardActor {
                     self.replica_state.replicated_keys.insert(key.clone(), value.clone());
 
                     // Also apply to executor for command execution
-                    if let Some(v) = value.get() {
+                    if value.is_hash() {
+                        // Recover hash data
+                        if let Some(hash) = value.get_hash() {
+                            let pairs: Vec<(crate::redis::SDS, crate::redis::SDS)> = hash.iter()
+                                .filter_map(|(field, lww)| {
+                                    lww.get().map(|v| (crate::redis::SDS::from_str(field), v.clone()))
+                                })
+                                .collect();
+                            if !pairs.is_empty() {
+                                let cmd = Command::HSet(key, pairs);
+                                self.executor.execute(&cmd);
+                            }
+                        }
+                    } else if let Some(v) = value.get() {
                         if let Some(expiry_ms) = value.expiry_ms {
                             let seconds = (expiry_ms / 1000) as i64;
                             let cmd = Command::SetEx(key, seconds, v.clone());
@@ -273,6 +286,33 @@ impl ReplicatedShardActor {
                 }
                 None
             }
+            // Hash commands
+            Command::HSet(key, pairs) => {
+                let fields: Vec<(String, crate::redis::SDS)> = pairs.iter()
+                    .map(|(f, v)| (f.to_string(), v.clone()))
+                    .collect();
+                Some(self.replica_state.record_hash_write(key.clone(), fields))
+            }
+            Command::HDel(key, fields) => {
+                let field_names: Vec<String> = fields.iter()
+                    .map(|f| f.to_string())
+                    .collect();
+                self.replica_state.record_hash_delete(key.clone(), field_names)
+            }
+            Command::HIncrBy(key, field, _) => {
+                // After HIncrBy, read the resulting hash value and record it
+                if let Some(value) = self.executor.get_data().get(key) {
+                    if let Some(hash) = value.as_hash() {
+                        if let Some(field_value) = hash.get(&crate::redis::SDS::from_str(&field.to_string())) {
+                            return Some(self.replica_state.record_hash_write(
+                                key.clone(),
+                                vec![(field.to_string(), field_value.clone())]
+                            ));
+                        }
+                    }
+                }
+                None
+            }
             Command::FlushDb | Command::FlushAll => {
                 None
             }
@@ -284,7 +324,29 @@ impl ReplicatedShardActor {
     fn apply_remote_delta_impl(&mut self, delta: ReplicationDelta) {
         self.replica_state.apply_remote_delta(delta.clone());
 
-        if let Some(value) = delta.value.get() {
+        if delta.value.is_hash() {
+            // Apply hash delta
+            if let Some(hash) = delta.value.get_hash() {
+                let pairs: Vec<(crate::redis::SDS, crate::redis::SDS)> = hash.iter()
+                    .filter_map(|(field, lww)| {
+                        lww.get().map(|v| (crate::redis::SDS::from_str(field), v.clone()))
+                    })
+                    .collect();
+                if !pairs.is_empty() {
+                    let cmd = Command::HSet(delta.key.clone(), pairs);
+                    self.executor.execute(&cmd);
+                }
+                // Handle tombstoned fields by deleting them
+                let tombstones: Vec<crate::redis::SDS> = hash.iter()
+                    .filter(|(_, lww)| lww.tombstone)
+                    .map(|(field, _)| crate::redis::SDS::from_str(field))
+                    .collect();
+                if !tombstones.is_empty() {
+                    let cmd = Command::HDel(delta.key.clone(), tombstones);
+                    self.executor.execute(&cmd);
+                }
+            }
+        } else if let Some(value) = delta.value.get() {
             if let Some(expiry_ms) = delta.value.expiry_ms {
                 let seconds = (expiry_ms / 1000) as i64;
                 let cmd = Command::SetEx(delta.key.clone(), seconds, value.clone());
