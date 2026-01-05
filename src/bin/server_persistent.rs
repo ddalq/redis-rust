@@ -205,7 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "Recovered {} segments, {} deltas, {} keys",
             stats.segments_loaded,
             stats.deltas_replayed,
-            state.key_count()
+            state.key_count().await
         );
     } else {
         info!("Starting fresh (no existing data)");
@@ -333,7 +333,7 @@ async fn handle_connection(
                 Ok(Some(resp_value)) => {
                     match Command::from_resp_zero_copy(&resp_value) {
                         Ok(cmd) => {
-                            let response = state.execute(cmd);
+                            let response = state.execute(cmd).await;
                             encode_resp_into(&response, &mut write_buffer);
                         }
                         Err(e) => {

@@ -1,14 +1,14 @@
 use crate::io::{TimeSource, ProductionTimeSource};
-use crate::redis::{Command, CommandExecutor, RespValue};
+use crate::redis::{Command, RespValue};
 use crate::replication::{
     ReplicaId, ReplicationConfig, ConsistencyLevel,
     ReplicationDelta,
 };
-use crate::replication::state::ShardReplicaState;
 use crate::replication::gossip::GossipState;
 use crate::simulator::VirtualTime;
 use crate::streaming::DeltaSinkSender;
 use super::gossip_actor::GossipActorHandle;
+use super::replicated_shard_actor::{ReplicatedShardActor, ReplicatedShardHandle};
 use parking_lot::RwLock;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -36,94 +36,16 @@ fn hash_key(key: &str) -> usize {
     (hasher.finish() as usize) % NUM_SHARDS
 }
 
-pub struct ReplicatedShard {
-    executor: CommandExecutor,
-    replica_state: ShardReplicaState,
-}
-
-impl ReplicatedShard {
-    pub fn new(replica_id: ReplicaId, consistency_level: ConsistencyLevel) -> Self {
-        ReplicatedShard {
-            executor: CommandExecutor::new(),
-            replica_state: ShardReplicaState::new(replica_id, consistency_level),
-        }
-    }
-
-    pub fn execute(&mut self, cmd: &Command) -> (RespValue, Option<ReplicationDelta>) {
-        let result = self.executor.execute(cmd);
-        let delta = self.record_mutation_post_execute(cmd);
-        (result, delta)
-    }
-
-    fn record_mutation_post_execute(&mut self, cmd: &Command) -> Option<ReplicationDelta> {
-        match cmd {
-            Command::Set(key, value) => {
-                Some(self.replica_state.record_write(key.clone(), value.clone(), None))
-            }
-            Command::SetEx(key, seconds, value) => {
-                let expiry_ms = (*seconds as u64) * 1000;
-                Some(self.replica_state.record_write(key.clone(), value.clone(), Some(expiry_ms)))
-            }
-            Command::SetNx(key, value) => {
-                if let Some(v) = self.executor.get_data().get(key) {
-                    if v.as_string().is_some() {
-                        return Some(self.replica_state.record_write(key.clone(), value.clone(), None));
-                    }
-                }
-                None
-            }
-            Command::Del(key) => {
-                self.replica_state.record_delete(key.clone())
-            }
-            Command::Incr(key) | Command::Decr(key) |
-            Command::IncrBy(key, _) | Command::DecrBy(key, _) |
-            Command::Append(key, _) | Command::GetSet(key, _) => {
-                if let Some(value) = self.executor.get_data().get(key) {
-                    if let Some(sds) = value.as_string() {
-                        return Some(self.replica_state.record_write(key.clone(), sds.clone(), None));
-                    }
-                }
-                None
-            }
-            Command::FlushDb | Command::FlushAll => {
-                None
-            }
-            _ => None,
-        }
-    }
-
-    pub fn apply_remote_delta(&mut self, delta: ReplicationDelta) {
-        self.replica_state.apply_remote_delta(delta.clone());
-
-        if let Some(value) = delta.value.get() {
-            if let Some(expiry_ms) = delta.value.expiry_ms {
-                let seconds = (expiry_ms / 1000) as i64;
-                let cmd = Command::SetEx(delta.key.clone(), seconds, value.clone());
-                self.executor.execute(&cmd);
-            } else {
-                let cmd = Command::Set(delta.key.clone(), value.clone());
-                self.executor.execute(&cmd);
-            }
-        } else if delta.value.is_tombstone() {
-            let cmd = Command::Del(delta.key.clone());
-            self.executor.execute(&cmd);
-        }
-    }
-
-    pub fn drain_pending_deltas(&mut self) -> Vec<ReplicationDelta> {
-        self.replica_state.drain_pending_deltas()
-    }
-
-    pub fn evict_expired(&mut self, current_time: VirtualTime) -> usize {
-        self.executor.evict_expired_direct(current_time)
-    }
-}
-
 /// Replicated sharded state with configurable time source
 ///
 /// Generic over `T: TimeSource` for zero-cost abstraction:
 /// - Production: `ProductionTimeSource` (ZST, compiles to syscall)
 /// - Simulation: `SimulatedTimeSource` (virtual clock)
+///
+/// ## Architecture (Actor-Based)
+///
+/// Each shard is owned by a `ReplicatedShardActor` - no `Arc<RwLock<>>` needed!
+/// All shard operations go through message passing for lock-free execution.
 ///
 /// ## Gossip Backend
 ///
@@ -133,7 +55,8 @@ impl ReplicatedShard {
 ///
 /// Use `with_gossip_actor()` or `with_gossip_actor_and_time()` for actor-based.
 pub struct ReplicatedShardedState<T: TimeSource = ProductionTimeSource> {
-    shards: Vec<Arc<RwLock<ReplicatedShard>>>,
+    /// Actor handles for each shard (no locks!)
+    shards: Vec<ReplicatedShardHandle>,
     config: ReplicationConfig,
     /// Gossip backend - supports both locked and actor-based modes
     gossip_backend: GossipBackend,
@@ -166,8 +89,9 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         let replica_id = ReplicaId::new(config.replica_id);
         let consistency_level = config.consistency_level;
 
+        // Spawn actor for each shard (no locks!)
         let shards = (0..NUM_SHARDS)
-            .map(|_| Arc::new(RwLock::new(ReplicatedShard::new(replica_id, consistency_level))))
+            .map(|shard_id| ReplicatedShardActor::spawn(replica_id, consistency_level, shard_id))
             .collect();
 
         let gossip_state = Arc::new(RwLock::new(GossipState::new(config.clone())));
@@ -193,8 +117,9 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         let replica_id = ReplicaId::new(config.replica_id);
         let consistency_level = config.consistency_level;
 
+        // Spawn actor for each shard (no locks!)
         let shards = (0..NUM_SHARDS)
-            .map(|_| Arc::new(RwLock::new(ReplicatedShard::new(replica_id, consistency_level))))
+            .map(|shard_id| ReplicatedShardActor::spawn(replica_id, consistency_level, shard_id))
             .collect();
 
         ReplicatedShardedState {
@@ -221,11 +146,11 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         self.delta_sink.is_some()
     }
 
-    pub fn execute(&self, cmd: Command) -> RespValue {
+    /// Execute a command (async - uses actor message passing)
+    pub async fn execute(&self, cmd: Command) -> RespValue {
         if let Some(key) = cmd.get_primary_key() {
             let shard_idx = hash_key(&key);
-            let mut shard = self.shards[shard_idx].write();
-            let (result, delta) = shard.execute(&cmd);
+            let (result, delta) = self.shards[shard_idx].execute(cmd).await;
 
             if let Some(delta) = delta {
                 // Send to gossip for replication
@@ -251,56 +176,69 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
 
             result
         } else {
-            self.execute_global(cmd)
+            self.execute_global(cmd).await
         }
     }
 
-    fn execute_global(&self, cmd: Command) -> RespValue {
+    async fn execute_global(&self, cmd: Command) -> RespValue {
         match &cmd {
             Command::Ping => RespValue::SimpleString("PONG".to_string()),
             Command::FlushDb | Command::FlushAll => {
-                for shard in &self.shards {
-                    let mut s = shard.write();
-                    s.executor.execute(&cmd);
-                }
+                // Execute on all shards concurrently
+                let futures: Vec<_> = self.shards.iter()
+                    .map(|shard| shard.execute(cmd.clone()))
+                    .collect();
+                futures::future::join_all(futures).await;
                 RespValue::SimpleString("OK".to_string())
             }
             Command::MSet(pairs) => {
-                for (key, value) in pairs {
-                    let shard_idx = hash_key(key);
-                    let mut shard = self.shards[shard_idx].write();
-                    let set_cmd = Command::Set(key.clone(), value.clone());
-                    shard.execute(&set_cmd);
-                }
+                // Execute all SETs concurrently
+                let futures: Vec<_> = pairs.iter()
+                    .map(|(key, value)| {
+                        let shard_idx = hash_key(key);
+                        let set_cmd = Command::Set(key.clone(), value.clone());
+                        self.shards[shard_idx].execute(set_cmd)
+                    })
+                    .collect();
+                futures::future::join_all(futures).await;
                 RespValue::SimpleString("OK".to_string())
             }
             Command::MGet(keys) => {
-                let mut results = Vec::new();
-                for key in keys {
-                    let shard_idx = hash_key(key);
-                    let shard = self.shards[shard_idx].read();
-                    let get_cmd = Command::Get(key.clone());
-                    results.push(shard.executor.execute_readonly(&get_cmd));
-                }
+                // Execute all GETs concurrently
+                let futures: Vec<_> = keys.iter()
+                    .map(|key| {
+                        let shard_idx = hash_key(key);
+                        let get_cmd = Command::Get(key.clone());
+                        self.shards[shard_idx].execute_readonly(get_cmd)
+                    })
+                    .collect();
+                let results = futures::future::join_all(futures).await;
                 RespValue::Array(Some(results))
             }
             Command::Exists(keys) => {
-                let mut count = 0i64;
-                for key in keys {
-                    let shard_idx = hash_key(key);
-                    let shard = self.shards[shard_idx].read();
-                    let exists_cmd = Command::Exists(vec![key.clone()]);
-                    if let RespValue::Integer(n) = shard.executor.execute_readonly(&exists_cmd) {
-                        count += n;
-                    }
-                }
+                // Execute all EXISTS concurrently
+                let futures: Vec<_> = keys.iter()
+                    .map(|key| {
+                        let shard_idx = hash_key(key);
+                        let exists_cmd = Command::Exists(vec![key.clone()]);
+                        self.shards[shard_idx].execute_readonly(exists_cmd)
+                    })
+                    .collect();
+                let results = futures::future::join_all(futures).await;
+                let count: i64 = results.into_iter()
+                    .filter_map(|r| if let RespValue::Integer(n) = r { Some(n) } else { None })
+                    .sum();
                 RespValue::Integer(count)
             }
             Command::Keys(_pattern) => {
+                // Execute on all shards concurrently
+                let futures: Vec<_> = self.shards.iter()
+                    .map(|shard| shard.execute_readonly(cmd.clone()))
+                    .collect();
+                let results = futures::future::join_all(futures).await;
                 let mut all_keys = Vec::new();
-                for shard in &self.shards {
-                    let s = shard.read();
-                    if let RespValue::Array(Some(keys)) = s.executor.execute_readonly(&cmd) {
+                for result in results {
+                    if let RespValue::Array(Some(keys)) = result {
                         all_keys.extend(keys);
                     }
                 }
@@ -308,7 +246,7 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
             }
             Command::Info => {
                 let info = format!(
-                    "# Replication\r\nrole:master\r\nreplica_id:{}\r\nconsistency_level:{:?}\r\nreplication_enabled:{}\r\nnum_shards:{}\r\n",
+                    "# Replication\r\nrole:master\r\nreplica_id:{}\r\nconsistency_level:{:?}\r\nreplication_enabled:{}\r\nnum_shards:{}\r\narchitecture:actor_per_shard\r\n",
                     self.config.replica_id,
                     self.config.consistency_level,
                     self.config.enabled,
@@ -320,36 +258,35 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         }
     }
 
+    /// Apply remote deltas from other replicas (fire-and-forget)
     pub fn apply_remote_deltas(&self, deltas: Vec<ReplicationDelta>) {
         for delta in deltas {
             let shard_idx = hash_key(&delta.key);
-            let mut shard = self.shards[shard_idx].write();
-            shard.apply_remote_delta(delta);
+            self.shards[shard_idx].apply_remote_delta(delta);
         }
     }
 
-    pub fn collect_pending_deltas(&self) -> Vec<ReplicationDelta> {
-        let mut all_deltas = Vec::new();
-        for shard in &self.shards {
-            let mut s = shard.write();
-            all_deltas.extend(s.drain_pending_deltas());
-        }
-        all_deltas
+    /// Collect pending deltas from all shards (async)
+    pub async fn collect_pending_deltas(&self) -> Vec<ReplicationDelta> {
+        let futures: Vec<_> = self.shards.iter()
+            .map(|shard| shard.drain_pending_deltas())
+            .collect();
+        let results = futures::future::join_all(futures).await;
+        results.into_iter().flatten().collect()
     }
 
-    /// Evict expired keys from all shards
+    /// Evict expired keys from all shards (async)
     ///
     /// Uses the configured TimeSource for zero-cost abstraction.
-    pub fn evict_expired_all_shards(&self) -> usize {
+    pub async fn evict_expired_all_shards(&self) -> usize {
         let current_time_ms = self.time_source.now_millis();
         let current_time = VirtualTime::from_millis(current_time_ms);
 
-        let mut total_evicted = 0;
-        for shard in &self.shards {
-            let mut s = shard.write();
-            total_evicted += s.evict_expired(current_time);
-        }
-        total_evicted
+        let futures: Vec<_> = self.shards.iter()
+            .map(|shard| shard.evict_expired(current_time))
+            .collect();
+        let results = futures::future::join_all(futures).await;
+        results.into_iter().sum()
     }
 
     /// Get the time source
@@ -398,17 +335,19 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         NUM_SHARDS
     }
 
-    /// Create a snapshot of all replicated state for checkpointing
+    /// Create a snapshot of all replicated state for checkpointing (async)
     ///
     /// Returns a HashMap of all keys to their ReplicatedValue across all shards.
     /// This is used by the CheckpointManager to create full state snapshots.
-    pub fn snapshot_state(&self) -> HashMap<String, crate::replication::state::ReplicatedValue> {
+    pub async fn snapshot_state(&self) -> HashMap<String, crate::replication::state::ReplicatedValue> {
+        let futures: Vec<_> = self.shards.iter()
+            .map(|shard| shard.get_snapshot())
+            .collect();
+        let results = futures::future::join_all(futures).await;
+
         let mut snapshot = HashMap::new();
-        for shard in &self.shards {
-            let s = shard.read();
-            for (key, value) in &s.replica_state.replicated_keys {
-                snapshot.insert(key.clone(), value.clone());
-            }
+        for shard_snapshot in results {
+            snapshot.extend(shard_snapshot);
         }
         snapshot
     }
@@ -423,24 +362,11 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         checkpoint_state: Option<HashMap<String, crate::replication::state::ReplicatedValue>>,
         deltas: Vec<ReplicationDelta>,
     ) {
-        // Step 1: Apply checkpoint state if present
+        // Step 1: Apply checkpoint state if present (fire-and-forget to actors)
         if let Some(state) = checkpoint_state {
             for (key, value) in state {
                 let shard_idx = hash_key(&key);
-                let mut shard = self.shards[shard_idx].write();
-                shard.replica_state.replicated_keys.insert(key.clone(), value.clone());
-
-                // Also apply to executor for command execution
-                if let Some(v) = value.get() {
-                    if let Some(expiry_ms) = value.expiry_ms {
-                        let seconds = (expiry_ms / 1000) as i64;
-                        let cmd = crate::redis::Command::SetEx(key, seconds, v.clone());
-                        shard.executor.execute(&cmd);
-                    } else {
-                        let cmd = crate::redis::Command::Set(key, v.clone());
-                        shard.executor.execute(&cmd);
-                    }
-                }
+                self.shards[shard_idx].apply_recovered_state(key, value);
             }
         }
 
@@ -448,14 +374,13 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         self.apply_remote_deltas(deltas);
     }
 
-    /// Get the total number of keys across all shards
-    pub fn key_count(&self) -> usize {
-        let mut count = 0;
-        for shard in &self.shards {
-            let s = shard.read();
-            count += s.replica_state.replicated_keys.len();
-        }
-        count
+    /// Get the total number of keys across all shards (async)
+    pub async fn key_count(&self) -> usize {
+        let futures: Vec<_> = self.shards.iter()
+            .map(|shard| shard.get_snapshot())
+            .collect();
+        let results = futures::future::join_all(futures).await;
+        results.into_iter().map(|s| s.len()).sum()
     }
 }
 

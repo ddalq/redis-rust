@@ -238,7 +238,7 @@ impl<S: ObjectStore + Clone + Send + Sync + 'static> StreamingIntegration<S> {
 
         info!(
             "Applied recovered state: {} keys",
-            state.key_count()
+            state.key_count().await
         );
 
         Ok(recovered.stats)

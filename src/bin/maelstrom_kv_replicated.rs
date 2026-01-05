@@ -72,6 +72,7 @@ struct NodeState {
     state: ReplicatedShardedState,
     #[allow(dead_code)]
     pending_deltas: Vec<ReplicationDelta>,
+    rt: tokio::runtime::Runtime,
 }
 
 impl NodeState {
@@ -94,21 +95,27 @@ impl NodeState {
             virtual_nodes_per_physical: 150,
         };
         
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime");
+
         NodeState {
             node_id,
             replica_id,
             peers,
             state: ReplicatedShardedState::new(config),
             pending_deltas: Vec::new(),
+            rt,
         }
     }
 
     fn execute(&mut self, cmd: Command) -> RespValue {
-        self.state.execute(cmd)
+        self.rt.block_on(self.state.execute(cmd))
     }
 
     fn drain_pending_deltas(&mut self) -> Vec<ReplicationDelta> {
-        self.state.collect_pending_deltas()
+        self.rt.block_on(self.state.collect_pending_deltas())
     }
 
     fn apply_remote_deltas(&mut self, deltas: Vec<ReplicationDelta>) {
