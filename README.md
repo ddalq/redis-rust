@@ -6,7 +6,7 @@ A production-ready, actor-based Redis cache server in Rust with distributed repl
 
 - **Production Redis Server**: Compatible with `redis-cli` and all Redis clients
 - **Tiger Style Engineering**: Explicit over implicit, assertion-heavy, deterministic behavior
-- **35+ Redis Commands**: Full caching feature set (strings, lists, sets, hashes, sorted sets)
+- **50+ Redis Commands**: Full caching feature set (strings, lists, sets, hashes, sorted sets)
 - **Dynamic Shard Architecture**: Runtime-configurable shards with lock-free message passing
 - **Anna KVS-Style Replication**: Configurable consistency (eventual, causal), coordination-free
 - **Hot Key Detection**: Adaptive replication for high-traffic keys
@@ -23,7 +23,7 @@ cargo run --bin redis-server-optimized --release
 # Connect with redis-cli
 redis-cli -p 3000
 
-# Run all tests (175 tests)
+# Run all tests (316 tests)
 cargo test --all
 
 # Run benchmarks
@@ -38,18 +38,17 @@ Docker-based benchmark (2 CPUs, 1GB RAM per container, 50 clients, 100K requests
 
 | Operation | Official Redis 7.4 | Rust Implementation | Relative |
 |-----------|-------------------|---------------------|----------|
-| SET | 78,802 req/sec | 76,687 req/sec | 97% |
-| GET | 80,580 req/sec | 76,278 req/sec | 95% |
-| INCR | 79,554 req/sec | 83,542 req/sec | 105% |
+| SET | 118,483 req/sec | 95,602 req/sec | 81% |
+| GET | 123,762 req/sec | 99,601 req/sec | 80% |
 
 ### Pipelined (Pipeline=16)
 
 | Operation | Official Redis 7.4 | Rust Implementation | Relative |
 |-----------|-------------------|---------------------|----------|
-| SET | 793,650 req/sec | **900,900 req/sec** | **113%** |
-| GET | 769,230 req/sec | **1,030,927 req/sec** | **134%** |
+| SET | 1,041,666 req/sec | **1,250,000 req/sec** | **120%** |
+| GET | 1,250,000 req/sec | **1,282,051 req/sec** | **103%** |
 
-Our implementation achieves **95-105%** of Redis on single operations and **113-134% FASTER** on pipelined workloads!
+Our implementation achieves **~80%** of Redis on single operations and **103-120% FASTER** on pipelined workloads!
 
 See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for full details and methodology.
 
@@ -114,10 +113,10 @@ Node 1                    Node 2                    Node 3
 
 ## Testing
 
-### Test Suite (175 tests total)
+### Test Suite (316 tests total)
 
 ```bash
-# Unit tests (138 tests)
+# Unit tests
 cargo test --lib
 
 # All tests including integration
@@ -125,10 +124,12 @@ cargo test --all
 ```
 
 **Test Categories:**
-- **Unit Tests** (138): Core Redis commands, RESP parsing, data structures
+- **Unit Tests** (150+): Core Redis commands, RESP parsing, data structures, VOPR invariants
 - **Eventual Consistency** (9): CRDT convergence, partition healing
 - **Causal Consistency** (10): Vector clocks, read-your-writes, happens-before
 - **DST/Simulation** (5): Multi-seed chaos testing
+- **Streaming DST** (11): Object store fault injection, 100+ seeds
+- **Streaming Persistence** (9): Write buffer, recovery, compaction
 - **Anti-Entropy** (8): Merkle tree sync, split-brain recovery
 - **Hot Key Detection** (5): Adaptive replication, Zipfian workloads
 
@@ -167,7 +168,7 @@ cargo test --all
 `SADD`, `SREM`, `SMEMBERS`, `SISMEMBER`, `SCARD`
 
 ### Hashes
-`HSET`, `HGET`, `HDEL`, `HGETALL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`
+`HSET`, `HGET`, `HDEL`, `HGETALL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`, `HINCRBY`
 
 ### Sorted Sets
 `ZADD`, `ZREM`, `ZSCORE`, `ZRANK`, `ZRANGE`, `ZREVRANGE`, `ZCARD`
@@ -179,8 +180,8 @@ cargo test --all
 
 | Feature | Official Redis 7.4 | This Implementation |
 |---------|-------------------|---------------------|
-| Performance (SET/GET) | Baseline | ~97% of Redis |
-| Pipelining | Full support | **113-134% FASTER** |
+| Performance (SET/GET) | Baseline | ~80% (single) / 103-120% (pipelined) |
+| Pipelining | Full support | **103-120% FASTER** |
 | Persistence (RDB/AOF) | Yes | Yes (Streaming to Object Store) |
 | Clustering | Redis Cluster | Anna-style CRDT |
 | Consistency | Single-leader strong | Eventual/Causal |

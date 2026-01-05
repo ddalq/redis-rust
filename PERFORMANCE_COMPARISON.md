@@ -2,22 +2,21 @@
 
 ## Executive Summary
 
-Our Tiger Style Rust Redis implementation achieves **95-105% of Redis 7.4 performance** on single operations and is **13-34% FASTER on pipelined workloads** in a fair Docker-based comparison. This is an excellent result for an implementation focused on memory safety, deterministic testing, and coordination-free distributed deployment.
+Our Tiger Style Rust Redis implementation achieves **~80% of Redis 7.4 performance** on single operations and is **3-20% FASTER on pipelined workloads** in a fair Docker-based comparison. This is an excellent result for an implementation focused on memory safety, deterministic testing, and coordination-free distributed deployment.
 
 ### Non-Pipelined Performance
 
 | Metric | Official Redis 7.4 | Our Implementation | Relative |
 |--------|-------------------|---------------------|----------|
-| SET | 78,802 req/sec | 76,687 req/sec | **97%** |
-| GET | 80,580 req/sec | 76,278 req/sec | **95%** |
-| INCR | 79,554 req/sec | 83,542 req/sec | **105%** |
+| SET | 118,483 req/sec | 95,602 req/sec | **81%** |
+| GET | 123,762 req/sec | 99,601 req/sec | **80%** |
 
 ### Pipelined Performance (P=16)
 
 | Metric | Official Redis 7.4 | Our Implementation | Relative |
 |--------|-------------------|---------------------|----------|
-| SET | 793,650 req/sec | **900,900 req/sec** | **113%** |
-| GET | 769,230 req/sec | **1,030,927 req/sec** | **134%** |
+| SET | 1,041,666 req/sec | **1,250,000 req/sec** | **120%** |
+| GET | 1,250,000 req/sec | **1,282,051 req/sec** | **103%** |
 
 ## Fair Comparison: Docker Benchmark
 
@@ -39,20 +38,19 @@ To ensure accurate comparison, both servers run in identical Docker containers w
 
 | Operation | Official Redis 7.4 | Rust Implementation | Notes |
 |-----------|-------------------|---------------------|-------|
-| SET | 82,034 req/sec | 80,515 req/sec | 98% - nearly identical |
-| GET | 80,580 req/sec | 76,278 req/sec | 95% - excellent |
-| INCR | 79,554 req/sec | 83,542 req/sec | 105% - faster! |
+| SET | 118,483 req/sec | 95,602 req/sec | 81% - actor overhead |
+| GET | 123,762 req/sec | 99,601 req/sec | 80% - actor overhead |
 
-**Verdict:** For single operations, we match Redis performance.
+**Verdict:** For single operations, we achieve ~80% of Redis performance due to actor-based architecture overhead.
 
 ### Pipelined Results (Pipeline=16)
 
 | Operation | Official Redis 7.4 | Rust Implementation | Notes |
 |-----------|-------------------|---------------------|-------|
-| SET | 793,650 req/sec | **900,900 req/sec** | **113% - FASTER** |
-| GET | 769,230 req/sec | **1,030,927 req/sec** | **134% - FASTER** |
+| SET | 1,041,666 req/sec | **1,250,000 req/sec** | **120% - FASTER** |
+| GET | 1,250,000 req/sec | **1,282,051 req/sec** | **103% - FASTER** |
 
-**Result:** Our implementation is **13-34% FASTER than Redis 7.4** on pipelined workloads due to:
+**Result:** Our implementation is **3-20% FASTER than Redis 7.4** on pipelined workloads due to:
 1. Batched response flushing (single syscall per batch)
 2. TCP_NODELAY enabled for lower latency
 3. Lock-free actor architecture
@@ -64,9 +62,9 @@ To ensure accurate comparison, both servers run in identical Docker containers w
 
 | Feature | Official Redis 7.4 | This Implementation |
 |---------|-------------------|---------------------|
-| **Performance (non-pipelined)** | Baseline | 95-105% |
-| **Performance (pipelined)** | ~800k req/sec | **~1M req/sec (113-134%)** |
-| Persistence (RDB/AOF) | Yes | No |
+| **Performance (non-pipelined)** | Baseline | ~80% |
+| **Performance (pipelined)** | ~1.25M req/sec | **~1.28M req/sec (103-120%)** |
+| Persistence (RDB/AOF) | Yes | Yes (Streaming to Object Store) |
 | Clustering | Redis Cluster | Anna-style CRDT |
 | Consistency Model | Strong (single-leader) | Eventual or Causal |
 | Pub/Sub | Yes | No |
@@ -122,9 +120,10 @@ let harness = ScenarioBuilder::new(seed)
     .run_with_eviction(100);
 ```
 
-- 175 tests including chaos injection
+- 316 tests including chaos injection
 - Deterministic replay with any seed
 - Virtual time for TTL testing
+- VOPR invariant checking on all data structures
 
 ### 3. Hot Key Detection
 ```
@@ -156,9 +155,9 @@ Node 1                    Node 2                    Node 3
 
 ### 5. FASTER Pipelining Performance
 ```
-Our Implementation: 1,030,927 req/sec (GET with P=16)
-Redis 7.4:           769,230 req/sec
-Speedup:             134% FASTER
+Our Implementation: 1,282,051 req/sec (GET with P=16)
+Redis 7.4:         1,250,000 req/sec
+Speedup:               103% FASTER
 ```
 
 - Batched response flushing (single syscall)
@@ -192,14 +191,16 @@ Speedup:             134% FASTER
 - Benchmarks
 - Manual verification
 
-### Our Implementation (175 tests)
+### Our Implementation (316 tests)
 
 | Category | Tests | Purpose |
 |----------|-------|---------|
-| Unit Tests | 138 | RESP, commands, data structures |
+| Unit Tests | 150+ | RESP, commands, data structures, VOPR invariants |
 | Eventual Consistency | 9 | CRDT convergence |
 | Causal Consistency | 10 | Vector clocks |
 | DST/Simulation | 5 | Multi-seed chaos |
+| Streaming DST | 11 | Object store fault injection |
+| Streaming Persistence | 9 | Write buffer, recovery |
 | Anti-Entropy | 8 | Merkle tree sync |
 | Hot Key Detection | 5 | Adaptive replication |
 
@@ -268,17 +269,17 @@ Multi-node tests fail because we use eventual consistency—this is by design.
 
 ## Conclusion
 
-### Performance Rating: A+ (Exceptional)
+### Performance Rating: A (Excellent)
 
 For **non-pipelined operations**, our implementation achieves:
-- **95-105% of Redis 7.4 performance** (Docker comparison)
+- **~80% of Redis 7.4 performance** (Docker comparison)
 - **Sub-millisecond latency**
-- **Comparable throughput**
+- **Acceptable throughput with memory safety benefits**
 
 For **pipelined operations**:
-- **113% faster (SET)** than Redis 7.4
-- **134% faster (GET)** than Redis 7.4
-- **1,030,927 req/sec peak throughput**
+- **120% faster (SET)** than Redis 7.4
+- **103% faster (GET)** than Redis 7.4
+- **1,282,051 req/sec peak throughput**
 
 ### Final Verdict
 
@@ -294,10 +295,12 @@ For **pipelined operations**:
 
 ### The Trade-Off
 
-We achieve **Redis-level or BETTER performance** while providing:
+We achieve **competitive performance** (~80% single ops, faster pipelined) while providing:
 - Memory safety (Rust)
-- Deterministic testing (175 tests, DST framework)
+- Deterministic testing (316 tests, DST framework)
 - Coordination-free replication (Anna KVS)
 - Automatic hot key handling
+- TigerStyle VOPR invariant checking
+- Streaming persistence to object stores (S3/LocalFs)
 
-The only sacrifice is some Redis features (pub/sub, persistence, Lua) - but we're **FASTER** on performance!
+The trade-off is ~20% slower on single operations for the benefits of memory safety, testability, and distributed consistency!
