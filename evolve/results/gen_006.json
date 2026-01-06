@@ -1,0 +1,140 @@
+{
+  "generation": 6,
+  "timestamp": "2026-01-06T06:11:32.244359",
+  "population": [
+    {
+      "id": 41,
+      "config": {
+        "num_shards": 4,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 70,
+        "batching.batch_threshold": 6
+      },
+      "fitness": 99.11693374078959,
+      "generation": 0,
+      "parent_ids": [
+        40
+      ]
+    },
+    {
+      "id": 42,
+      "config": {
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 6
+      },
+      "fitness": 99.03147550717529,
+      "generation": 0,
+      "parent_ids": [
+        33
+      ]
+    },
+    {
+      "id": 48,
+      "config": {
+        "num_shards": 8,
+        "response_pool.capacity": 448,
+        "response_pool.prewarm": 112,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 5
+      },
+      "fitness": 96.27052869363321,
+      "generation": 5,
+      "parent_ids": [
+        34,
+        40
+      ]
+    },
+    {
+      "id": 44,
+      "config": {
+        "num_shards": 8,
+        "response_pool.capacity": 448,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 70,
+        "batching.batch_threshold": 7
+      },
+      "fitness": 93.31146481571423,
+      "generation": 5,
+      "parent_ids": [
+        39,
+        33
+      ]
+    },
+    {
+      "id": 46,
+      "config": {
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 4096,
+        "batching.min_pipeline_buffer": 90,
+        "batching.batch_threshold": 6
+      },
+      "fitness": 92.85951039265056,
+      "generation": 5,
+      "parent_ids": [
+        34,
+        34
+      ]
+    },
+    {
+      "id": 47,
+      "config": {
+        "num_shards": 4,
+        "response_pool.capacity": 448,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 90,
+        "batching.batch_threshold": 6
+      },
+      "fitness": 92.44593994000004,
+      "generation": 5,
+      "parent_ids": [
+        33,
+        34
+      ]
+    },
+    {
+      "id": 45,
+      "config": {
+        "num_shards": 4,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 12288,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 5
+      },
+      "fitness": 91.41111004607777,
+      "generation": 5,
+      "parent_ids": [
+        40,
+        40
+      ]
+    },
+    {
+      "id": 43,
+      "config": {
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 4096,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 6
+      },
+      "fitness": 87.46692029065244,
+      "generation": 5,
+      "parent_ids": [
+        33,
+        34
+      ]
+    }
+  ]
+}

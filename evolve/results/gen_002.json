@@ -1,105 +1,139 @@
 {
   "generation": 2,
-  "timestamp": "2026-01-05T21:42:05.618110",
+  "timestamp": "2026-01-05T22:10:21.306183",
   "population": [
     {
-      "id": 11,
+      "id": 9,
       "config": {
-        "num_shards": 16,
-        "response_pool.capacity": 832,
-        "response_pool.prewarm": 48,
-        "buffers.read_size": 16384,
-        "batching.min_pipeline_buffer": 60,
-        "batching.batch_threshold": 7
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 4096,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 6
       },
-      "fitness": 84.90093783095276,
-      "generation": 1,
-      "parent_ids": [
-        2,
-        2
-      ]
-    },
-    {
-      "id": 7,
-      "config": {
-        "num_shards": 16,
-        "response_pool.capacity": 832,
-        "response_pool.prewarm": 48,
-        "buffers.read_size": 16384,
-        "batching.min_pipeline_buffer": 60,
-        "batching.batch_threshold": 7
-      },
-      "fitness": 84.55264631742986,
+      "fitness": 97.96735800717528,
       "generation": 0,
       "parent_ids": [
-        2
+        8
       ]
     },
     {
-      "id": 8,
+      "id": 16,
       "config": {
-        "num_shards": 16,
-        "response_pool.capacity": 640,
-        "response_pool.prewarm": 16,
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
         "buffers.read_size": 8192,
         "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 7
+      },
+      "fitness": 96.66093424797758,
+      "generation": 1,
+      "parent_ids": [
+        8,
+        8
+      ]
+    },
+    {
+      "id": 14,
+      "config": {
+        "num_shards": 16,
+        "response_pool.capacity": 576,
+        "response_pool.prewarm": 64,
+        "buffers.read_size": 16384,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 6
+      },
+      "fitness": 96.56601158312515,
+      "generation": 1,
+      "parent_ids": [
+        7,
+        8
+      ]
+    },
+    {
+      "id": 12,
+      "config": {
+        "num_shards": 32,
+        "response_pool.capacity": 576,
+        "response_pool.prewarm": 48,
+        "buffers.read_size": 16384,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 4
+      },
+      "fitness": 96.4644164388975,
+      "generation": 1,
+      "parent_ids": [
+        8,
+        7
+      ]
+    },
+    {
+      "id": 10,
+      "config": {
+        "num_shards": 8,
+        "response_pool.capacity": 256,
+        "response_pool.prewarm": 176,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 30,
         "batching.batch_threshold": 5
       },
-      "fitness": 83.1492894963872,
+      "fitness": 91.11752119363322,
       "generation": 0,
       "parent_ids": [
         5
       ]
     },
     {
-      "id": 10,
+      "id": 11,
       "config": {
-        "num_shards": 16,
-        "response_pool.capacity": 832,
-        "response_pool.prewarm": 48,
-        "buffers.read_size": 16384,
-        "batching.min_pipeline_buffer": 60,
-        "batching.batch_threshold": 8
-      },
-      "fitness": 81.66247717438435,
-      "generation": 1,
-      "parent_ids": [
-        2,
-        2
-      ]
-    },
-    {
-      "id": 9,
-      "config": {
-        "num_shards": 16,
-        "response_pool.capacity": 640,
-        "response_pool.prewarm": 16,
-        "buffers.read_size": 8192,
-        "batching.min_pipeline_buffer": 60,
+        "num_shards": 8,
+        "response_pool.capacity": 256,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 4096,
+        "batching.min_pipeline_buffer": 30,
         "batching.batch_threshold": 5
       },
-      "fitness": 80.57192372156449,
+      "fitness": 90.64568034676623,
       "generation": 1,
       "parent_ids": [
         5,
-        1
+        8
       ]
     },
     {
-      "id": 12,
+      "id": 15,
       "config": {
         "num_shards": 8,
-        "response_pool.capacity": 832,
-        "response_pool.prewarm": 112,
-        "buffers.read_size": 16384,
-        "batching.min_pipeline_buffer": 190,
-        "batching.batch_threshold": 7
+        "response_pool.capacity": 256,
+        "response_pool.prewarm": 64,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 30,
+        "batching.batch_threshold": 5
       },
-      "fitness": 70.8162714410503,
+      "fitness": 86.94345009157894,
       "generation": 1,
       "parent_ids": [
-        2,
-        4
+        5,
+        7
+      ]
+    },
+    {
+      "id": 13,
+      "config": {
+        "num_shards": 64,
+        "response_pool.capacity": 256,
+        "response_pool.prewarm": 144,
+        "buffers.read_size": 4096,
+        "batching.min_pipeline_buffer": 40,
+        "batching.batch_threshold": 4
+      },
+      "fitness": 84.49687043945983,
+      "generation": 1,
+      "parent_ids": [
+        8,
+        3
       ]
     }
   ]

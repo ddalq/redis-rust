@@ -386,6 +386,49 @@ Different environment for comparison - Docker Desktop on macOS (runs through VM)
 
 **Optimization Applied:** Batched GET pipelining - multiple GET commands are grouped by shard and executed concurrently, reducing actor channel round-trips from N to num_shards.
 
+### Redis 8.0 Comparison (January 5, 2026)
+
+Redis 8.0 includes significant performance improvements, especially on pipelined workloads.
+
+**System:** macOS Darwin 24.4.0, Docker Desktop
+
+#### After Phase 0.2 (SET batching added)
+
+| Operation | Redis 7.4 | Redis 8.0 | Rust | Rust vs R7 | Rust vs R8 |
+|-----------|-----------|-----------|------|------------|------------|
+| SET (P=1) | 184,162 | 174,825 | 160,772 | **87.3%** | **92.0%** |
+| GET (P=1) | 191,571 | 153,374 | 177,620 | **92.7%** | **115.8%** |
+| SET (P=16) | 1,428,571 | 1,538,462 | 1,190,476 | **83.3%** | **77.4%** |
+| GET (P=16) | 1,666,667 | 1,851,852 | 1,538,462 | **92.3%** | **83.1%** |
+
+**Key Results (Phase 0.2 Complete):**
+
+1. **GET P=1: BEATS Redis 8.0 by 16%!** 🎉
+   - 177,620 req/s vs Redis 8.0's 153,374 req/s
+   - Single-command GETs are now our strength
+
+2. **SET P=16: Improved from 59% → 77%** ✅
+   - SET batching now groups consecutive SETs by shard
+   - Reduced actor channel round-trips significantly
+
+3. **All operations above 75% of Redis 8.0**
+   - Competitive across the board
+   - P=1 performance is excellent
+
+**Phase Improvements:**
+| Metric | Before Phase 0 | After 0.1 | After 0.2 |
+|--------|----------------|-----------|-----------|
+| GET P=1 vs R8 | ~84% | 96% | **116%** |
+| SET P=1 vs R8 | ~82% | 92% | 92% |
+| SET P=16 vs R8 | ~59% | 59% | **77%** |
+| GET P=16 vs R8 | ~83% | 83% | 83% |
+
+**How to Run:**
+```bash
+cd docker-benchmark
+./run-redis8-comparison.sh
+```
+
 ### Known Limitations
 
 1. **Streaming persistence**: Object store-based (S3/LocalFs), not traditional RDB/AOF

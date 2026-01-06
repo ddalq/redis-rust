@@ -1,87 +1,254 @@
 {
-  "completed_at": "2026-01-05T21:42:05.618725",
-  "generations": 3,
-  "population_size": 6,
+  "completed_at": "2026-01-06T06:40:49.686535",
+  "generations": 10,
+  "population_size": 8,
   "mutation_rate": 0.3,
   "best_candidate": {
-    "id": 11,
+    "id": 40,
     "config": {
-      "num_shards": 16,
-      "response_pool.capacity": 832,
-      "response_pool.prewarm": 48,
-      "buffers.read_size": 16384,
-      "batching.min_pipeline_buffer": 60,
-      "batching.batch_threshold": 7
+      "num_shards": 4,
+      "response_pool.capacity": 512,
+      "response_pool.prewarm": 96,
+      "buffers.read_size": 8192,
+      "batching.min_pipeline_buffer": 70,
+      "batching.batch_threshold": 6
     },
-    "fitness": 84.90093783095276,
-    "generation": 1,
+    "fitness": 99.11693374078959,
+    "generation": 4,
     "parent_ids": [
-      2,
-      2
+      31,
+      32
     ]
   },
   "history": [
     {
       "generation": 1,
-      "best_fitness": 84.55264631742986,
-      "avg_fitness": 77.48485003594975,
+      "best_fitness": 97.96735800717528,
+      "avg_fitness": 90.08767382106164,
       "best_config": {
-        "num_shards": 16,
-        "response_pool.capacity": 832,
-        "response_pool.prewarm": 48,
-        "buffers.read_size": 16384,
-        "batching.min_pipeline_buffer": 60,
-        "batching.batch_threshold": 7
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 4096,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 6
       },
       "population_fitness": [
-        84.55264631742986,
-        83.1492894963872,
-        76.42278782030787,
-        76.2725772938741,
-        72.59462938066788,
-        71.9171699070316
+        97.96735800717528,
+        91.11752119363322,
+        91.08399508700373,
+        89.63497458867938,
+        88.27481199167812,
+        87.82374314567022,
+        87.4247569735295,
+        87.3742295811237
       ]
     },
     {
       "generation": 2,
-      "best_fitness": 84.90093783095276,
-      "avg_fitness": 80.94225766362815,
+      "best_fitness": 97.96735800717528,
+      "avg_fitness": 92.60778029357671,
       "best_config": {
-        "num_shards": 16,
-        "response_pool.capacity": 832,
-        "response_pool.prewarm": 48,
-        "buffers.read_size": 16384,
-        "batching.min_pipeline_buffer": 60,
-        "batching.batch_threshold": 7
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 4096,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 6
       },
       "population_fitness": [
-        84.90093783095276,
-        84.55264631742986,
-        83.1492894963872,
-        81.66247717438435,
-        80.57192372156449,
-        70.8162714410503
+        97.96735800717528,
+        96.66093424797758,
+        96.56601158312515,
+        96.4644164388975,
+        91.11752119363322,
+        90.64568034676623,
+        86.94345009157894,
+        84.49687043945983
       ]
     },
     {
       "generation": 3,
-      "best_fitness": 84.90093783095276,
-      "avg_fitness": 80.35295552868591,
+      "best_fitness": 99.03147550717529,
+      "avg_fitness": 94.23958153934066,
       "best_config": {
-        "num_shards": 16,
-        "response_pool.capacity": 832,
-        "response_pool.prewarm": 48,
-        "buffers.read_size": 16384,
-        "batching.min_pipeline_buffer": 60,
-        "batching.batch_threshold": 7
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 6
       },
       "population_fitness": [
-        84.90093783095276,
-        84.55264631742986,
-        83.16421711868932,
-        79.67880007296995,
-        77.40107877380868,
-        72.42005305826491
+        99.03147550717529,
+        97.96735800717528,
+        96.66093424797758,
+        96.09288951922245,
+        95.16822522743684,
+        93.16118641341868,
+        90.79488049966861,
+        85.03970289265055
+      ]
+    },
+    {
+      "generation": 4,
+      "best_fitness": 99.03147550717529,
+      "avg_fitness": 85.39488450018018,
+      "best_config": {
+        "num_shards": 8,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 80,
+        "batching.batch_threshold": 6
+      },
+      "population_fitness": [
+        99.03147550717529,
+        97.96735800717528,
+        97.62472549966861,
+        97.5430818527173,
+        97.07840391341867,
+        72.40378527085721,
+        66.24423570737792,
+        55.266010243051205
+      ]
+    },
+    {
+      "generation": 5,
+      "best_fitness": 99.11693374078959,
+      "avg_fitness": 95.12942335862662,
+      "best_config": {
+        "num_shards": 4,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 70,
+        "batching.batch_threshold": 6
+      },
+      "population_fitness": [
+        99.11693374078959,
+        99.03147550717529,
+        97.96735800717528,
+        95.91719619363322,
+        93.03744619363322,
+        92.93413079046806,
+        91.71866079046806,
+        91.31218564567024
+      ]
+    },
+    {
+      "generation": 6,
+      "best_fitness": 99.11693374078959,
+      "avg_fitness": 93.98923542833664,
+      "best_config": {
+        "num_shards": 4,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 70,
+        "batching.batch_threshold": 6
+      },
+      "population_fitness": [
+        99.11693374078959,
+        99.03147550717529,
+        96.27052869363321,
+        93.31146481571423,
+        92.85951039265056,
+        92.44593994000004,
+        91.41111004607777,
+        87.46692029065244
+      ]
+    },
+    {
+      "generation": 7,
+      "best_fitness": 99.11693374078959,
+      "avg_fitness": 95.01163842219903,
+      "best_config": {
+        "num_shards": 4,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 70,
+        "batching.batch_threshold": 6
+      },
+      "population_fitness": [
+        99.11693374078959,
+        99.03147550717529,
+        98.5504638468247,
+        94.11590691121955,
+        93.53060749968085,
+        92.5167395703245,
+        92.2984710536002,
+        90.93250924797758
+      ]
+    },
+    {
+      "generation": 8,
+      "best_fitness": 99.11693374078959,
+      "avg_fitness": 93.33329320727695,
+      "best_config": {
+        "num_shards": 4,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 70,
+        "batching.batch_threshold": 6
+      },
+      "population_fitness": [
+        99.11693374078959,
+        99.03147550717529,
+        96.35319231571421,
+        95.36313391341868,
+        91.39292539265057,
+        89.20549222692999,
+        88.15062192191665,
+        88.05257063962068
+      ]
+    },
+    {
+      "generation": 9,
+      "best_fitness": 99.11693374078959,
+      "avg_fitness": 89.31044703377604,
+      "best_config": {
+        "num_shards": 4,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 70,
+        "batching.batch_threshold": 6
+      },
+      "population_fitness": [
+        99.11693374078959,
+        99.03147550717529,
+        98.8579183235472,
+        92.22097577873697,
+        86.14949674696926,
+        83.99210434400013,
+        78.15094762122867,
+        76.96372420776126
+      ]
+    },
+    {
+      "generation": 10,
+      "best_fitness": 99.11693374078959,
+      "avg_fitness": 94.67545835693076,
+      "best_config": {
+        "num_shards": 4,
+        "response_pool.capacity": 512,
+        "response_pool.prewarm": 96,
+        "buffers.read_size": 8192,
+        "batching.min_pipeline_buffer": 70,
+        "batching.batch_threshold": 6
+      },
+      "population_fitness": [
+        99.11693374078959,
+        99.10436049966862,
+        99.03147550717529,
+        94.66447731032616,
+        94.53383986558887,
+        92.4401145765803,
+        91.5552320765803,
+        86.95723327873696
       ]
     }
   ]

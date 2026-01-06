@@ -182,48 +182,58 @@ class FitnessEvaluator:
         results_dir = self.docker_dir / "results"
 
         # Find the most recent markdown file
-        md_files = sorted(results_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+        md_files = sorted(results_dir.glob("redis8_comparison*.md"), key=lambda p: p.stat().st_mtime)
         if not md_files:
             raise RuntimeError("No benchmark results found")
 
         latest = md_files[-1]
         content = latest.read_text()
+        logger.info(f"  Parsing results from: {latest.name}")
 
         # Parse the markdown table for results
-        # Example format in table:
-        # | SET | P=1  | 123456 req/s | 234567 req/s | 52.6% |
-        # | GET | P=1  | 123456 req/s | 234567 req/s | 52.6% |
+        # Table format:
+        # | Operation | Redis 7.4 | Redis 8.0 | Rust | R8 vs R7 | Rust vs R7 | Rust vs R8 |
+        # | SET | 184162.06 | 182149.36 | 163666.12 | 98.9% | 88.8% | 89.8% |
 
-        def extract_ops(pattern: str, content: str) -> Tuple[float, float]:
-            """Extract (rust, redis) ops/sec from table row."""
-            match = re.search(pattern, content)
+        def extract_row(operation: str, section: str) -> Tuple[float, float, float]:
+            """Extract (redis74, redis8, rust) ops/sec from table row."""
+            # Find the section first (P=1 or P=16)
+            if section == "P=1":
+                section_match = re.search(r'Non-Pipelined.*?(\|[^\n]*SET[^\n]*\n\|[^\n]*GET[^\n]*)', content, re.DOTALL)
+            else:  # P=16
+                section_match = re.search(r'Pipelined Performance.*?(\|[^\n]*SET[^\n]*\n\|[^\n]*GET[^\n]*)', content, re.DOTALL)
+
+            if not section_match:
+                return 0.0, 0.0, 0.0
+
+            section_content = section_match.group(1)
+
+            # Pattern: | SET | 184162.06 | 182149.36 | 163666.12 | ...
+            pattern = rf'\|\s*{operation}\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|'
+            match = re.search(pattern, section_content)
             if not match:
-                return 0.0, 0.0
-            rust_ops = float(match.group(1).replace(",", ""))
-            redis_ops = float(match.group(2).replace(",", ""))
-            return rust_ops, redis_ops
+                return 0.0, 0.0, 0.0
 
-        # Patterns for each metric (Rust impl | Redis 8.0)
-        set_p1_pattern = r'\|\s*SET\s*\|\s*P=1\s*\|\s*([\d,]+)\s*req/s\s*\|\s*([\d,]+)\s*req/s'
-        get_p1_pattern = r'\|\s*GET\s*\|\s*P=1\s*\|\s*([\d,]+)\s*req/s\s*\|\s*([\d,]+)\s*req/s'
-        set_p16_pattern = r'\|\s*SET\s*\|\s*P=16\s*\|\s*([\d,]+)\s*req/s\s*\|\s*([\d,]+)\s*req/s'
-        get_p16_pattern = r'\|\s*GET\s*\|\s*P=16\s*\|\s*([\d,]+)\s*req/s\s*\|\s*([\d,]+)\s*req/s'
+            redis74 = float(match.group(1))
+            redis8 = float(match.group(2))
+            rust = float(match.group(3))
+            return redis74, redis8, rust
 
-        set_p1 = extract_ops(set_p1_pattern, content)
-        get_p1 = extract_ops(get_p1_pattern, content)
-        set_p16 = extract_ops(set_p16_pattern, content)
-        get_p16 = extract_ops(get_p16_pattern, content)
+        set_p1 = extract_row("SET", "P=1")
+        get_p1 = extract_row("GET", "P=1")
+        set_p16 = extract_row("SET", "P=16")
+        get_p16 = extract_row("GET", "P=16")
 
         if target == "redis-rust":
             return BenchmarkResult(
-                set_p1=set_p1[0],
-                get_p1=get_p1[0],
-                set_p16=set_p16[0],
-                get_p16=get_p16[0],
+                set_p1=set_p1[2],   # Rust column
+                get_p1=get_p1[2],
+                set_p16=set_p16[2],
+                get_p16=get_p16[2],
             )
         else:  # redis8
             return BenchmarkResult(
-                set_p1=set_p1[1],
+                set_p1=set_p1[1],   # Redis 8.0 column
                 get_p1=get_p1[1],
                 set_p16=set_p16[1],
                 get_p16=get_p16[1],

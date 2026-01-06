@@ -1,0 +1,42 @@
+services:
+  # Official Redis 7.4 (stable reference)
+  redis-7:
+    image: redis:7.4-alpine
+    container_name: redis-7
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # Official Redis 8.0 (latest)
+  redis-8:
+    image: redis:8.0
+    container_name: redis-8
+    ports:
+      - "6380:6379"
+    command: redis-server --save "" --appendonly no
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # Our Rust implementation (listens on port 6379, exposed as 3000)
+  redis-rust:
+    build:
+      context: ..
+      dockerfile: docker-benchmark/Dockerfile.redis-rust
+    container_name: redis-rust
+    ports:
+      - "3000:6379"
+    environment:
+      - RUST_LOG=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
