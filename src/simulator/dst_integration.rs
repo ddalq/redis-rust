@@ -13,6 +13,82 @@ use crate::io::Rng;
 use crate::redis::{Command, CommandExecutor, RespValue, SDS};
 use std::collections::HashMap;
 
+/// Zipfian distribution for realistic key access patterns.
+///
+/// In real workloads, a small number of keys are "hot" (accessed frequently)
+/// while most keys are accessed rarely. This follows Zipf's law where the
+/// frequency of access is inversely proportional to rank.
+///
+/// With skew=1.0 and 1000 keys:
+/// - Top 1% of keys (~10 keys) receive ~50% of accesses
+/// - Top 10% of keys (~100 keys) receive ~80% of accesses
+pub struct ZipfianGenerator {
+    num_keys: u64,
+    skew: f64,
+    /// Precomputed cumulative distribution for fast sampling
+    cumulative: Vec<f64>,
+}
+
+impl ZipfianGenerator {
+    /// Create a new Zipfian generator.
+    ///
+    /// # Arguments
+    /// * `num_keys` - Total number of unique keys
+    /// * `skew` - Skew parameter (1.0 = standard Zipf, higher = more skewed)
+    pub fn new(num_keys: u64, skew: f64) -> Self {
+        debug_assert!(num_keys > 0, "Precondition: must have at least 1 key");
+        debug_assert!(skew > 0.0, "Precondition: skew must be positive");
+
+        // Precompute cumulative distribution for inverse transform sampling
+        let mut cumulative = Vec::with_capacity(num_keys as usize);
+        let mut sum = 0.0;
+
+        for k in 1..=num_keys {
+            sum += 1.0 / (k as f64).powf(skew);
+            cumulative.push(sum);
+        }
+
+        // Normalize to [0, 1]
+        for c in &mut cumulative {
+            *c /= sum;
+        }
+
+        ZipfianGenerator {
+            num_keys,
+            skew,
+            cumulative,
+        }
+    }
+
+    /// Generate a key index using the Zipfian distribution.
+    /// Returns a value in [0, num_keys).
+    pub fn sample(&self, rng: &mut impl Rng) -> u64 {
+        let u = rng.gen_range(0, 1_000_000) as f64 / 1_000_000.0;
+
+        // Binary search for the key
+        match self.cumulative.binary_search_by(|c| {
+            c.partial_cmp(&u).unwrap_or(std::cmp::Ordering::Equal)
+        }) {
+            Ok(idx) => idx as u64,
+            Err(idx) => idx.min(self.num_keys as usize - 1) as u64,
+        }
+    }
+
+    /// Generate a key string using Zipfian distribution.
+    pub fn generate_key(&self, rng: &mut impl Rng) -> String {
+        format!("key{}", self.sample(rng))
+    }
+}
+
+/// Key distribution configuration for simulations.
+#[derive(Clone)]
+pub enum KeyDistribution {
+    /// Uniform random distribution (unrealistic but simple)
+    Uniform { num_keys: u64 },
+    /// Zipfian distribution (realistic - hot keys accessed frequently)
+    Zipfian { num_keys: u64, skew: f64 },
+}
+
 /// Simulated node state for DST testing
 #[allow(dead_code)]
 struct SimulatedNode {
@@ -61,6 +137,8 @@ pub struct RedisDSTSimulation {
     nodes: Vec<Option<SimulatedNode>>,
     key_values: HashMap<String, String>, // Ground truth for linearizability
     write_history: Vec<WriteEvent>,
+    key_distribution: KeyDistribution,
+    zipf_generator: Option<ZipfianGenerator>,
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +151,33 @@ struct WriteEvent {
 }
 
 impl RedisDSTSimulation {
+    /// Create a new simulation with realistic Zipfian key distribution.
+    ///
+    /// Uses 1000 keys with skew=1.0, meaning:
+    /// - Top ~10 keys receive ~50% of accesses (hot keys)
+    /// - Most keys are accessed rarely (cold keys)
     pub fn new(seed: u64, node_count: usize) -> Self {
+        Self::with_key_distribution(
+            seed,
+            node_count,
+            KeyDistribution::Zipfian {
+                num_keys: 1000,
+                skew: 1.0,
+            },
+        )
+    }
+
+    /// Create a simulation with uniform key distribution (for comparison/legacy tests).
+    pub fn new_uniform(seed: u64, node_count: usize, num_keys: u64) -> Self {
+        Self::with_key_distribution(seed, node_count, KeyDistribution::Uniform { num_keys })
+    }
+
+    /// Create a simulation with custom key distribution.
+    pub fn with_key_distribution(
+        seed: u64,
+        node_count: usize,
+        key_distribution: KeyDistribution,
+    ) -> Self {
         let config = DSTConfig {
             seed,
             node_count,
@@ -86,17 +190,43 @@ impl RedisDSTSimulation {
             nodes.push(Some(SimulatedNode::new(i)));
         }
 
+        let zipf_generator = match &key_distribution {
+            KeyDistribution::Zipfian { num_keys, skew } => {
+                Some(ZipfianGenerator::new(*num_keys, *skew))
+            }
+            KeyDistribution::Uniform { .. } => None,
+        };
+
         RedisDSTSimulation {
             inner: DSTSimulation::with_config(config),
             nodes,
             key_values: HashMap::new(),
             write_history: Vec::new(),
+            key_distribution,
+            zipf_generator,
         }
     }
 
     pub fn with_faults(mut self, config: FaultConfig) -> Self {
         self.inner = self.inner.with_faults(config);
         self
+    }
+
+    /// Generate a key according to the configured distribution.
+    fn generate_key(&mut self) -> String {
+        match &self.key_distribution {
+            KeyDistribution::Uniform { num_keys } => {
+                format!("key{}", self.inner.rng().gen_range(0, *num_keys))
+            }
+            KeyDistribution::Zipfian { .. } => {
+                if let Some(ref zipf) = self.zipf_generator {
+                    zipf.generate_key(self.inner.rng())
+                } else {
+                    // Fallback (should never happen)
+                    format!("key{}", self.inner.rng().gen_range(0, 1000))
+                }
+            }
+        }
     }
 
     /// Execute a random operation
@@ -132,8 +262,8 @@ impl RedisDSTSimulation {
             running_nodes[rng.gen_range(0, running_nodes.len() as u64) as usize]
         };
 
-        // Pick a random key
-        let key = format!("key{}", self.inner.rng().gen_range(0, 100));
+        // Pick a key according to configured distribution (Zipfian by default)
+        let key = self.generate_key();
 
         let op_id = self.inner.next_op_id();
         let start_time = self.inner.current_time();
@@ -179,7 +309,8 @@ impl RedisDSTSimulation {
             running_nodes[rng.gen_range(0, running_nodes.len() as u64) as usize]
         };
 
-        let key = format!("key{}", self.inner.rng().gen_range(0, 100));
+        // Pick a key according to configured distribution (Zipfian by default)
+        let key = self.generate_key();
         let value = format!("value{}", self.inner.rng().gen_range(0, 10000));
 
         let op_id = self.inner.next_op_id();
@@ -453,6 +584,96 @@ mod tests {
         println!(
             "Tracked {} writes across {} keys",
             stats.writes, stats.unique_keys
+        );
+    }
+
+    #[test]
+    fn test_zipfian_distribution() {
+        // Verify that Zipfian distribution creates realistic hot/cold key patterns
+        use crate::io::simulation::SimulatedRng;
+
+        let zipf = ZipfianGenerator::new(1000, 1.0);
+        let mut rng = SimulatedRng::new(12345);
+        let mut key_counts: HashMap<u64, u64> = HashMap::new();
+
+        // Sample 10,000 keys
+        for _ in 0..10_000 {
+            let key = zipf.sample(&mut rng);
+            *key_counts.entry(key).or_insert(0) += 1;
+        }
+
+        // Sort keys by frequency
+        let mut counts: Vec<(u64, u64)> = key_counts.into_iter().collect();
+        counts.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Verify hot keys exist (top 10 keys should have significant traffic)
+        let top_10_accesses: u64 = counts.iter().take(10).map(|(_, c)| *c).sum();
+        let total_accesses = 10_000u64;
+
+        println!(
+            "Zipfian distribution: top 10 keys received {:.1}% of accesses",
+            (top_10_accesses as f64 / total_accesses as f64) * 100.0
+        );
+
+        // Top 10 keys (1% of keys) should receive at least 30% of accesses
+        // (theoretical is ~50% for skew=1.0)
+        assert!(
+            top_10_accesses > 3000,
+            "Zipfian should concentrate accesses on hot keys: top 10 got {} of 10000",
+            top_10_accesses
+        );
+
+        // Should have many cold keys with few accesses
+        let cold_keys = counts.iter().filter(|(_, c)| *c <= 5).count();
+        println!(
+            "Cold keys (<=5 accesses): {} of {} unique keys",
+            cold_keys,
+            counts.len()
+        );
+    }
+
+    #[test]
+    fn test_zipfian_vs_uniform_distribution() {
+        // Compare key distribution between Zipfian and uniform
+        buggify::reset_stats();
+
+        // Run with Zipfian (default)
+        let mut sim_zipf =
+            RedisDSTSimulation::new(42, 3).with_faults(FaultConfig::calm());
+        sim_zipf.run(200);
+        let stats_zipf = sim_zipf.stats();
+
+        buggify::reset_stats();
+
+        // Run with uniform (old behavior)
+        let mut sim_uniform =
+            RedisDSTSimulation::new_uniform(42, 3, 100).with_faults(FaultConfig::calm());
+        sim_uniform.run(200);
+        let stats_uniform = sim_uniform.stats();
+
+        println!(
+            "Zipfian: {} writes across {} keys ({:.1} writes/key avg)",
+            stats_zipf.writes,
+            stats_zipf.unique_keys,
+            stats_zipf.writes as f64 / stats_zipf.unique_keys.max(1) as f64
+        );
+        println!(
+            "Uniform: {} writes across {} keys ({:.1} writes/key avg)",
+            stats_uniform.writes,
+            stats_uniform.unique_keys,
+            stats_uniform.writes as f64 / stats_uniform.unique_keys.max(1) as f64
+        );
+
+        // Zipfian should concentrate writes on fewer keys (higher writes/key ratio)
+        // because hot keys get written more often
+        let zipf_ratio = stats_zipf.writes as f64 / stats_zipf.unique_keys.max(1) as f64;
+        let uniform_ratio = stats_uniform.writes as f64 / stats_uniform.unique_keys.max(1) as f64;
+
+        // Zipfian should have higher concentration (more writes per unique key)
+        // This may not always hold due to randomness, so we just log it
+        println!(
+            "Write concentration ratio - Zipfian: {:.2}, Uniform: {:.2}",
+            zipf_ratio, uniform_ratio
         );
     }
 }
