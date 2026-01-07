@@ -114,7 +114,15 @@ fn main() {
         let key = format!("zset:{}", i % 100);
         let member = SDS::from_str(&format!("member:{}", i % 1000));
         let score = (i % 10000) as f64;
-        executor.execute(&Command::ZAdd(key, vec![(score, member)]));
+        executor.execute(&Command::ZAdd {
+            key,
+            pairs: vec![(score, member)],
+            nx: false,
+            xx: false,
+            gt: false,
+            lt: false,
+            ch: false,
+        });
     }
     let zadd_duration = start.elapsed();
     println!("ZADD: {} ops in {:?} ({:.0} ops/sec)",
