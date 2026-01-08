@@ -10,7 +10,7 @@
 use super::key_encoder::MetricKeyEncoder;
 use super::state::MetricsState;
 use super::types::{MetricPoint, MetricType, TagSet};
-use crate::production::{HotKeyDetector, HotKeyConfig};
+use crate::production::{HotKeyConfig, HotKeyDetector};
 
 /// Metric command types
 #[derive(Debug, Clone)]
@@ -97,10 +97,7 @@ impl MetricsCommand {
 
         let name = args[0].clone();
         let (tags, remaining) = Self::parse_tags(&args[1..]);
-        let increment = remaining
-            .first()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1);
+        let increment = remaining.first().and_then(|s| s.parse().ok()).unwrap_or(1);
 
         Ok(MetricsCommand::Counter {
             name,
@@ -164,10 +161,7 @@ impl MetricsCommand {
 
         let name = args[0].clone();
         let (tags, remaining) = Self::parse_tags(&args[1..]);
-        let value = remaining
-            .first()
-            .ok_or("MUNIQUE requires value")?
-            .clone();
+        let value = remaining.first().ok_or("MUNIQUE requires value")?.clone();
 
         Ok(MetricsCommand::Unique { name, tags, value })
     }

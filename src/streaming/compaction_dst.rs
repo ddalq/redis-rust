@@ -23,7 +23,7 @@ use crate::redis::SDS;
 use crate::replication::lattice::{LamportClock, ReplicaId};
 use crate::replication::state::{ReplicatedValue, ReplicationDelta};
 use crate::streaming::{
-    Compactor, CompactionConfig, CompactionError, InMemoryObjectStore, ManifestManager,
+    CompactionConfig, CompactionError, Compactor, InMemoryObjectStore, ManifestManager,
     ObjectStore, SegmentReader, SimulatedObjectStore, SimulatedStoreConfig, SimulatedStoreStats,
     StreamingPersistence, WriteBufferConfig,
 };

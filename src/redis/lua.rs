@@ -68,7 +68,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 /// Thread-safe shared script cache for multi-shard support
-/// 
+///
 /// This wrapper allows all shards to share a single script cache,
 /// ensuring SCRIPT LOAD works correctly regardless of which shard receives the command.
 #[derive(Debug, Clone)]
@@ -96,17 +96,17 @@ impl SharedScriptCache {
     }
 
     /// Cache a script and return its SHA1
-    /// 
+    ///
     /// Thread-safe: acquires write lock
     pub fn cache_script(&self, script: &str) -> String {
         debug_assert!(!script.is_empty(), "Precondition: script must not be empty");
-        
+
         let mut cache = self.inner.write().expect("Script cache lock poisoned");
         cache.cache_script(script)
     }
 
     /// Get a script by SHA1
-    /// 
+    ///
     /// Thread-safe: acquires read lock and clones the script
     /// Returns owned String to avoid holding the lock
     pub fn get_script(&self, sha1: &str) -> Option<String> {
@@ -115,7 +115,7 @@ impl SharedScriptCache {
     }
 
     /// Check if a script exists
-    /// 
+    ///
     /// Thread-safe: acquires read lock
     pub fn has_script(&self, sha1: &str) -> bool {
         let cache = self.inner.read().expect("Script cache lock poisoned");
@@ -123,7 +123,7 @@ impl SharedScriptCache {
     }
 
     /// Clear all cached scripts
-    /// 
+    ///
     /// Thread-safe: acquires write lock
     pub fn flush(&self) {
         let mut cache = self.inner.write().expect("Script cache lock poisoned");

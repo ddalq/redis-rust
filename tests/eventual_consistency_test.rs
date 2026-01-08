@@ -4,9 +4,9 @@
 //! These tests validate the Anna-style eventual consistency guarantees.
 
 use redis_sim::redis::SDS;
-use redis_sim::replication::state::{ReplicationDelta, ShardReplicaState};
-use redis_sim::replication::lattice::{GCounter, PNCounter, ReplicaId};
 use redis_sim::replication::config::ConsistencyLevel;
+use redis_sim::replication::lattice::{GCounter, PNCounter, ReplicaId};
+use redis_sim::replication::state::{ReplicationDelta, ShardReplicaState};
 
 /// Helper to convert SDS to string for comparison
 fn sds_to_string(sds: &SDS) -> String {
@@ -27,9 +27,21 @@ fn test_lww_convergence_concurrent_writes() {
 
     // Each node writes a different value to the same key "concurrently"
     // (In LWW, highest timestamp wins)
-    let delta1 = state1.record_write("shared_key".to_string(), SDS::from_str("value_from_node1"), None);
-    let delta2 = state2.record_write("shared_key".to_string(), SDS::from_str("value_from_node2"), None);
-    let delta3 = state3.record_write("shared_key".to_string(), SDS::from_str("value_from_node3"), None);
+    let delta1 = state1.record_write(
+        "shared_key".to_string(),
+        SDS::from_str("value_from_node1"),
+        None,
+    );
+    let delta2 = state2.record_write(
+        "shared_key".to_string(),
+        SDS::from_str("value_from_node2"),
+        None,
+    );
+    let delta3 = state3.record_write(
+        "shared_key".to_string(),
+        SDS::from_str("value_from_node3"),
+        None,
+    );
 
     println!("=== LWW Convergence Test ===");
     println!("Delta1 timestamp: {:?}", delta1.value.timestamp);
@@ -47,9 +59,21 @@ fn test_lww_convergence_concurrent_writes() {
     state3.apply_remote_delta(delta2.clone());
 
     // All nodes should converge to the same value
-    let val1 = state1.get_replicated("shared_key").unwrap().get().map(sds_to_string);
-    let val2 = state2.get_replicated("shared_key").unwrap().get().map(sds_to_string);
-    let val3 = state3.get_replicated("shared_key").unwrap().get().map(sds_to_string);
+    let val1 = state1
+        .get_replicated("shared_key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
+    let val2 = state2
+        .get_replicated("shared_key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
+    let val3 = state3
+        .get_replicated("shared_key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
 
     println!("Node1 final value: {:?}", val1);
     println!("Node2 final value: {:?}", val2);
@@ -85,8 +109,16 @@ fn test_lww_convergence_different_order() {
     state_b.apply_remote_delta(delta2.clone());
     state_b.apply_remote_delta(delta1.clone());
 
-    let val_a = state_a.get_replicated("key").unwrap().get().map(sds_to_string);
-    let val_b = state_b.get_replicated("key").unwrap().get().map(sds_to_string);
+    let val_a = state_a
+        .get_replicated("key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
+    let val_b = state_b
+        .get_replicated("key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
 
     println!("=== Order Independence Test ===");
     println!("State A (delta1→delta2): {:?}", val_a);
@@ -214,13 +246,24 @@ fn test_causal_consistency_vector_clocks() {
     println!("Delta2 VC: {:?}", delta2.value.vector_clock);
 
     // delta2 should be causally after delta1 (has vector clock)
-    assert!(delta2.value.vector_clock.is_some(), "Causal mode should track vector clocks");
+    assert!(
+        delta2.value.vector_clock.is_some(),
+        "Causal mode should track vector clocks"
+    );
 
     // Apply delta2 to node1
     state1.apply_remote_delta(delta2.clone());
 
-    let val1 = state1.get_replicated("key").unwrap().get().map(sds_to_string);
-    let val2 = state2.get_replicated("key").unwrap().get().map(sds_to_string);
+    let val1 = state1
+        .get_replicated("key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
+    let val2 = state2
+        .get_replicated("key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
 
     println!("Node1 final: {:?}", val1);
     println!("Node2 final: {:?}", val2);
@@ -250,15 +293,37 @@ fn test_partition_and_heal_convergence() {
     let delta2 = state2.record_write("key".to_string(), SDS::from_str("partition_value_2"), None);
 
     println!("During partition:");
-    println!("  Node1: {:?}", state1.get_replicated("key").unwrap().get().map(sds_to_string));
-    println!("  Node2: {:?}", state2.get_replicated("key").unwrap().get().map(sds_to_string));
+    println!(
+        "  Node1: {:?}",
+        state1
+            .get_replicated("key")
+            .unwrap()
+            .get()
+            .map(sds_to_string)
+    );
+    println!(
+        "  Node2: {:?}",
+        state2
+            .get_replicated("key")
+            .unwrap()
+            .get()
+            .map(sds_to_string)
+    );
 
     // HEAL: exchange deltas
     state1.apply_remote_delta(delta2.clone());
     state2.apply_remote_delta(delta1.clone());
 
-    let val1 = state1.get_replicated("key").unwrap().get().map(sds_to_string);
-    let val2 = state2.get_replicated("key").unwrap().get().map(sds_to_string);
+    let val1 = state1
+        .get_replicated("key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
+    let val2 = state2
+        .get_replicated("key")
+        .unwrap()
+        .get()
+        .map(sds_to_string);
 
     println!("After healing:");
     println!("  Node1: {:?}", val1);
@@ -290,7 +355,8 @@ fn test_many_nodes_convergence() {
     }
 
     // Also have some nodes write to a shared key
-    let shared_deltas: Vec<ReplicationDelta> = states.iter_mut()
+    let shared_deltas: Vec<ReplicationDelta> = states
+        .iter_mut()
         .take(5)
         .enumerate()
         .map(|(i, state)| {
@@ -324,7 +390,8 @@ fn test_many_nodes_convergence() {
     }
 
     // Verify shared key converged
-    let shared_values: Vec<_> = states.iter()
+    let shared_values: Vec<_> = states
+        .iter()
         .map(|s| s.get_replicated("shared").unwrap().get().map(sds_to_string))
         .collect();
 
@@ -347,7 +414,10 @@ fn test_high_contention_convergence() {
         .map(|i| ShardReplicaState::new(ReplicaId::new(i as u64), ConsistencyLevel::Eventual))
         .collect();
 
-    println!("=== High Contention Test ({} nodes, {} writes each) ===", num_nodes, writes_per_node);
+    println!(
+        "=== High Contention Test ({} nodes, {} writes each) ===",
+        num_nodes, writes_per_node
+    );
 
     let mut all_deltas: Vec<ReplicationDelta> = Vec::new();
 
@@ -373,13 +443,23 @@ fn test_high_contention_convergence() {
     }
 
     // All nodes should converge
-    let final_values: Vec<_> = states.iter()
-        .map(|s| s.get_replicated("hot_key").unwrap().get().map(sds_to_string))
+    let final_values: Vec<_> = states
+        .iter()
+        .map(|s| {
+            s.get_replicated("hot_key")
+                .unwrap()
+                .get()
+                .map(sds_to_string)
+        })
         .collect();
 
     let first = &final_values[0];
     for (i, val) in final_values.iter().enumerate() {
-        assert_eq!(val, first, "Node {} has different value: {:?} vs {:?}", i, val, first);
+        assert_eq!(
+            val, first,
+            "Node {} has different value: {:?} vs {:?}",
+            i, val, first
+        );
     }
 
     println!("✓ Converged under high contention to: {:?}", first);

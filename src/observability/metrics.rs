@@ -28,10 +28,7 @@ impl Metrics {
             ..Default::default()
         }) {
             Ok(c) => {
-                tracing::info!(
-                    "DogStatsD client connected to {}",
-                    config.statsd_addr
-                );
+                tracing::info!("DogStatsD client connected to {}", config.statsd_addr);
                 Some(c)
             }
             Err(e) => {

@@ -8,7 +8,7 @@
 //! - Writes during partition
 //! - Asymmetric partitions
 
-use super::multi_node::{MultiNodeSimulation, check_single_key_linearizability};
+use super::multi_node::{check_single_key_linearizability, MultiNodeSimulation};
 use crate::redis::{Command, SDS};
 use std::collections::HashSet;
 
@@ -208,9 +208,7 @@ pub fn run_partition_test_batch(
             (num_nodes - 1, "key1", "value_from_last"),
         ];
 
-        let writes_after: Vec<(usize, &str, &str)> = vec![
-            (0, "key1", "final_value"),
-        ];
+        let writes_after: Vec<(usize, &str, &str)> = vec![(0, "key1", "final_value")];
 
         let result = run_partition_test(
             test_name,
@@ -313,7 +311,11 @@ mod tests {
 
         // All nodes should have the same final value
         let unique_values: HashSet<_> = result.final_values.iter().collect();
-        assert_eq!(unique_values.len(), 1, "All nodes should converge to same value");
+        assert_eq!(
+            unique_values.len(),
+            1,
+            "All nodes should converge to same value"
+        );
     }
 
     #[test]
@@ -324,10 +326,7 @@ mod tests {
             5,
             42,
             PartitionConfig::split_brain(vec![0, 1], vec![2, 3, 4]),
-            vec![
-                (0, "key1", "group_a_value"),
-                (3, "key1", "group_b_value"),
-            ],
+            vec![(0, "key1", "group_a_value"), (3, "key1", "group_b_value")],
             vec![(0, "key1", "reconciled_value")],
             50,
         );
@@ -349,8 +348,16 @@ mod tests {
             sim.partition(1, 3);
 
             // Write on both sides simultaneously
-            sim.execute(1, 0, Command::set("conflict_key".into(), SDS::from_str("side_a")));
-            sim.execute(2, 2, Command::set("conflict_key".into(), SDS::from_str("side_b")));
+            sim.execute(
+                1,
+                0,
+                Command::set("conflict_key".into(), SDS::from_str("side_a")),
+            );
+            sim.execute(
+                2,
+                2,
+                Command::set("conflict_key".into(), SDS::from_str("side_b")),
+            );
 
             // Gossip within partitions
             for _ in 0..10 {
@@ -360,10 +367,14 @@ mod tests {
 
             // Node 0 and 1 should have "side_a", nodes 2 and 3 should have "side_b"
             let values_before_heal = sim.get_all_values("conflict_key");
-            assert_eq!(values_before_heal[0], values_before_heal[1],
-                "Nodes in same partition should agree");
-            assert_eq!(values_before_heal[2], values_before_heal[3],
-                "Nodes in same partition should agree");
+            assert_eq!(
+                values_before_heal[0], values_before_heal[1],
+                "Nodes in same partition should agree"
+            );
+            assert_eq!(
+                values_before_heal[2], values_before_heal[3],
+                "Nodes in same partition should agree"
+            );
 
             // Heal partition
             sim.heal_partition(0, 2);
@@ -373,7 +384,11 @@ mod tests {
 
             // Write after heal to trigger cross-partition gossip
             // This simulates anti-entropy or new activity after partition heals
-            sim.execute(3, 0, Command::set("conflict_key".into(), SDS::from_str("after_heal")));
+            sim.execute(
+                3,
+                0,
+                Command::set("conflict_key".into(), SDS::from_str("after_heal")),
+            );
 
             // Converge
             sim.converge(50);
@@ -394,7 +409,11 @@ mod tests {
         let mut sim = MultiNodeSimulation::new(5, 42);
 
         // Initial write
-        sim.execute(1, 0, Command::set("cascade_key".into(), SDS::from_str("initial")));
+        sim.execute(
+            1,
+            0,
+            Command::set("cascade_key".into(), SDS::from_str("initial")),
+        );
         sim.converge(10);
 
         // Create cascading partitions: 0 -> 1 -> 2 -> 3 -> 4
@@ -407,7 +426,11 @@ mod tests {
         sim.partition(2, 4);
 
         // Write on node 0
-        sim.execute(2, 0, Command::set("cascade_key".into(), SDS::from_str("from_0")));
+        sim.execute(
+            2,
+            0,
+            Command::set("cascade_key".into(), SDS::from_str("from_0")),
+        );
 
         // Gossip - message should cascade through the chain (0->1->2->3->4)
         // Each hop takes a gossip round
@@ -431,7 +454,11 @@ mod tests {
         sim.heal_partition(2, 4);
 
         // Write to trigger full propagation after heal
-        sim.execute(3, 0, Command::set("cascade_key".into(), SDS::from_str("final")));
+        sim.execute(
+            3,
+            0,
+            Command::set("cascade_key".into(), SDS::from_str("final")),
+        );
         sim.converge(30);
 
         assert!(
@@ -445,15 +472,18 @@ mod tests {
     fn test_partition_with_packet_loss() {
         // Combine partition with packet loss
         for seed in 0..10 {
-            let mut sim = MultiNodeSimulation::new(3, seed)
-                .with_packet_loss(0.2);
+            let mut sim = MultiNodeSimulation::new(3, seed).with_packet_loss(0.2);
 
             // Partition node 2
             sim.partition(0, 2);
             sim.partition(1, 2);
 
             // Write on node 0
-            sim.execute(1, 0, Command::set("lossy_key".into(), SDS::from_str("value")));
+            sim.execute(
+                1,
+                0,
+                Command::set("lossy_key".into(), SDS::from_str("value")),
+            );
 
             // Gossip with packet loss
             for _ in 0..20 {
@@ -629,10 +659,22 @@ mod tests {
         // Verify each partition has its own keys
         // Partition [0,1] should have key_a, key_b
         // Partition [2,3] should have key_c, key_d
-        assert_eq!(sim.nodes[0].get_replicated_value("key_a"), Some("value_a".to_string()));
-        assert_eq!(sim.nodes[1].get_replicated_value("key_b"), Some("value_b".to_string()));
-        assert_eq!(sim.nodes[2].get_replicated_value("key_c"), Some("value_c".to_string()));
-        assert_eq!(sim.nodes[3].get_replicated_value("key_d"), Some("value_d".to_string()));
+        assert_eq!(
+            sim.nodes[0].get_replicated_value("key_a"),
+            Some("value_a".to_string())
+        );
+        assert_eq!(
+            sim.nodes[1].get_replicated_value("key_b"),
+            Some("value_b".to_string())
+        );
+        assert_eq!(
+            sim.nodes[2].get_replicated_value("key_c"),
+            Some("value_c".to_string())
+        );
+        assert_eq!(
+            sim.nodes[3].get_replicated_value("key_d"),
+            Some("value_d".to_string())
+        );
 
         // Heal all partitions
         sim.heal_partition(0, 2);
@@ -641,10 +683,26 @@ mod tests {
         sim.heal_partition(1, 3);
 
         // Write on each key to trigger cross-partition gossip
-        sim.execute(5, 0, Command::set("key_a".into(), SDS::from_str("value_a_final")));
-        sim.execute(6, 1, Command::set("key_b".into(), SDS::from_str("value_b_final")));
-        sim.execute(7, 2, Command::set("key_c".into(), SDS::from_str("value_c_final")));
-        sim.execute(8, 3, Command::set("key_d".into(), SDS::from_str("value_d_final")));
+        sim.execute(
+            5,
+            0,
+            Command::set("key_a".into(), SDS::from_str("value_a_final")),
+        );
+        sim.execute(
+            6,
+            1,
+            Command::set("key_b".into(), SDS::from_str("value_b_final")),
+        );
+        sim.execute(
+            7,
+            2,
+            Command::set("key_c".into(), SDS::from_str("value_c_final")),
+        );
+        sim.execute(
+            8,
+            3,
+            Command::set("key_d".into(), SDS::from_str("value_d_final")),
+        );
 
         // Converge
         sim.converge(50);
@@ -676,15 +734,21 @@ mod tests {
     fn test_stress_partition_scenarios() {
         // Run many seeds with various partition scenarios
         let scenarios: Vec<(&str, Box<dyn Fn(usize) -> PartitionConfig>)> = vec![
-            ("isolate_first", Box::new(|n| PartitionConfig::isolate_node(0, n))),
-            ("isolate_last", Box::new(|n| PartitionConfig::isolate_node(n - 1, n))),
-            ("split_even", Box::new(|n| {
-                let mid = n / 2;
-                PartitionConfig::split_brain(
-                    (0..mid).collect(),
-                    (mid..n).collect(),
-                )
-            })),
+            (
+                "isolate_first",
+                Box::new(|n| PartitionConfig::isolate_node(0, n)),
+            ),
+            (
+                "isolate_last",
+                Box::new(|n| PartitionConfig::isolate_node(n - 1, n)),
+            ),
+            (
+                "split_even",
+                Box::new(|n| {
+                    let mid = n / 2;
+                    PartitionConfig::split_brain((0..mid).collect(), (mid..n).collect())
+                }),
+            ),
         ];
 
         for (name, partition_fn) in scenarios {
@@ -712,7 +776,11 @@ mod tests {
                 }
 
                 // Write after heal to trigger convergence
-                sim.execute(3, 0, Command::set("stress_key".into(), SDS::from_str("final")));
+                sim.execute(
+                    3,
+                    0,
+                    Command::set("stress_key".into(), SDS::from_str("final")),
+                );
 
                 sim.converge(50);
 
@@ -730,8 +798,7 @@ mod tests {
             assert!(
                 all_converged,
                 "Scenario '{}' had failures: {:?}",
-                name,
-                failures
+                name, failures
             );
         }
     }

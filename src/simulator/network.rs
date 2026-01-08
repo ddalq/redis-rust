@@ -1,4 +1,4 @@
-use super::{HostId, VirtualTime, Duration, DeterministicRng};
+use super::{DeterministicRng, Duration, HostId, VirtualTime};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -66,7 +66,12 @@ impl Network {
         to: HostId,
         rng: &mut DeterministicRng,
     ) -> Option<Duration> {
-        if self.partition_map.get(&(from, to)).copied().unwrap_or(false) {
+        if self
+            .partition_map
+            .get(&(from, to))
+            .copied()
+            .unwrap_or(false)
+        {
             return None;
         }
 

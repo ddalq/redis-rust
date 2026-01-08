@@ -8,9 +8,7 @@
 //! - The fix is deterministic and reproducible
 
 use redis_sim::redis::{Command, RespValue, SDS};
-use redis_sim::simulator::connection::{
-    PipelineSimulator, SimulatedConnection,
-};
+use redis_sim::simulator::connection::{PipelineSimulator, SimulatedConnection};
 
 /// Test that batched flushing produces identical results to unbatched
 /// but with fewer flush() calls
@@ -160,7 +158,11 @@ fn test_deterministic_behavior() {
         conn2.send_pipeline(commands);
         let responses2 = conn2.process();
 
-        assert_eq!(responses1, responses2, "Seed {} produced non-deterministic results", seed);
+        assert_eq!(
+            responses1, responses2,
+            "Seed {} produced non-deterministic results",
+            seed
+        );
         assert_eq!(conn1.flush_count(), conn2.flush_count());
     }
 }
@@ -168,8 +170,8 @@ fn test_deterministic_behavior() {
 /// Test flush reduction across many pipeline sizes
 #[test]
 fn test_flush_reduction_statistics() {
-    let mut simulator = PipelineSimulator::new(42)
-        .with_sizes(vec![1, 2, 4, 8, 16, 32, 64, 128, 256]);
+    let mut simulator =
+        PipelineSimulator::new(42).with_sizes(vec![1, 2, 4, 8, 16, 32, 64, 128, 256]);
 
     simulator.run();
 
@@ -228,11 +230,7 @@ fn test_1000_seeds_connection_correctness() {
         }
     }
 
-    assert!(
-        failures.is_empty(),
-        "Seeds with failures: {:?}",
-        failures
-    );
+    assert!(failures.is_empty(), "Seeds with failures: {:?}", failures);
 }
 
 /// Test that PING commands work in pipeline
@@ -240,11 +238,7 @@ fn test_1000_seeds_connection_correctness() {
 fn test_ping_pipeline() {
     let mut conn = SimulatedConnection::new(42);
 
-    conn.send_pipeline(vec![
-        Command::Ping,
-        Command::Ping,
-        Command::Ping,
-    ]);
+    conn.send_pipeline(vec![Command::Ping, Command::Ping, Command::Ping]);
 
     let responses = conn.process();
 
@@ -273,14 +267,23 @@ fn test_large_pipeline_stress() {
     let mut conn = SimulatedConnection::new(42);
 
     let commands: Vec<Command> = (0..1000)
-        .map(|i| Command::set(format!("key{:04}", i), SDS::from_str(&format!("value{:04}", i))))
+        .map(|i| {
+            Command::set(
+                format!("key{:04}", i),
+                SDS::from_str(&format!("value{:04}", i)),
+            )
+        })
         .collect();
 
     conn.send_pipeline(commands);
     let responses = conn.process();
 
     assert_eq!(responses.len(), 1000);
-    assert_eq!(conn.flush_count(), 1, "1000 commands should still be 1 flush");
+    assert_eq!(
+        conn.flush_count(),
+        1,
+        "1000 commands should still be 1 flush"
+    );
 
     // Verify all OKs
     for (i, response) in responses.iter().enumerate() {

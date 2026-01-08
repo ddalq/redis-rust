@@ -33,21 +33,20 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+use bytes::{BufMut, BytesMut};
+use redis_sim::observability::{init_tracing, shutdown, DatadogConfig};
 use redis_sim::production::ReplicatedShardedState;
-use redis_sim::replication::{ReplicationConfig, ConsistencyLevel};
+use redis_sim::redis::{Command, RespCodec, RespValue};
+use redis_sim::replication::{ConsistencyLevel, ReplicationConfig};
 use redis_sim::streaming::{
-    StreamingConfig, ObjectStoreType, WorkerHandles,
-    create_integration, StreamingIntegrationTrait,
+    create_integration, ObjectStoreType, StreamingConfig, StreamingIntegrationTrait, WorkerHandles,
 };
-use redis_sim::redis::{RespCodec, RespValue, Command};
-use redis_sim::observability::{DatadogConfig, init_tracing, shutdown};
-use bytes::{BytesMut, BufMut};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::signal;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{info, error, warn};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::signal;
+use tracing::{error, info, warn};
 
 // Redis-compatible defaults for drop-in replacement
 const DEFAULT_PORT: u16 = 6379;
@@ -113,9 +112,10 @@ impl Config {
             }),
             #[cfg(feature = "s3")]
             "s3" => {
-                let bucket = self.s3_bucket.clone().ok_or(
-                    "REDIS_S3_BUCKET required for S3 store type".to_string()
-                )?;
+                let bucket = self
+                    .s3_bucket
+                    .clone()
+                    .ok_or("REDIS_S3_BUCKET required for S3 store type".to_string())?;
                 Ok(StreamingConfig {
                     enabled: true,
                     store_type: ObjectStoreType::S3,
@@ -162,7 +162,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "localfs" => println!("  Path: {}", config.data_path.display()),
         #[cfg(feature = "s3")]
         "s3" => {
-            println!("  Bucket: {}", config.s3_bucket.as_deref().unwrap_or("(not set)"));
+            println!(
+                "  Bucket: {}",
+                config.s3_bucket.as_deref().unwrap_or("(not set)")
+            );
             println!("  Prefix: {}", config.s3_prefix);
             if let Some(endpoint) = &config.s3_endpoint {
                 println!("  Endpoint: {}", endpoint);
@@ -292,7 +295,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-async fn handle_health_check(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn handle_health_check(
+    mut stream: TcpStream,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Read the HTTP request (we don't care about the content)
     let mut buf = [0u8; 1024];
     let _ = stream.read(&mut buf).await?;
@@ -327,17 +332,15 @@ async fn handle_connection(
         // Process all available commands (pipelining support)
         loop {
             match RespCodec::parse(&mut buffer) {
-                Ok(Some(resp_value)) => {
-                    match Command::from_resp_zero_copy(&resp_value) {
-                        Ok(cmd) => {
-                            let response = state.execute(cmd).await;
-                            encode_resp_into(&response, &mut write_buffer);
-                        }
-                        Err(e) => {
-                            encode_error_into(&e, &mut write_buffer);
-                        }
+                Ok(Some(resp_value)) => match Command::from_resp_zero_copy(&resp_value) {
+                    Ok(cmd) => {
+                        let response = state.execute(cmd).await;
+                        encode_resp_into(&response, &mut write_buffer);
                     }
-                }
+                    Err(e) => {
+                        encode_error_into(&e, &mut write_buffer);
+                    }
+                },
                 Ok(None) => break, // Need more data
                 Err(e) => {
                     encode_error_into(&format!("protocol error: {}", e), &mut write_buffer);

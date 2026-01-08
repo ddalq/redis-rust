@@ -1,7 +1,7 @@
-use super::state::ReplicationDelta;
 use super::config::ReplicationConfig;
 use super::gossip_router::GossipRouter;
 use super::lattice::ReplicaId;
+use super::state::ReplicationDelta;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -153,8 +153,7 @@ impl GossipState {
     pub fn verify_invariants(&self) {
         // Invariant 1: replica_id must match config
         debug_assert_eq!(
-            self.replica_id.0,
-            self.config.replica_id,
+            self.replica_id.0, self.config.replica_id,
             "Invariant violated: replica_id mismatch"
         );
 
@@ -163,8 +162,7 @@ impl GossipState {
             if let Some(target) = msg.target {
                 // Target should not be self
                 debug_assert_ne!(
-                    target,
-                    self.replica_id,
+                    target, self.replica_id,
                     "Invariant violated: targeted message to self"
                 );
             }
@@ -232,7 +230,8 @@ impl GossipState {
                             target_deltas,
                             self.epoch,
                         );
-                        self.outbound_queue.push(RoutedMessage::targeted(target_replica, msg));
+                        self.outbound_queue
+                            .push(RoutedMessage::targeted(target_replica, msg));
                     }
                 }
                 return;

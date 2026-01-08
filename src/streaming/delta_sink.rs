@@ -32,7 +32,9 @@ pub struct DeltaSinkSender {
 impl DeltaSinkSender {
     /// Send a delta to the sink
     pub fn send(&self, delta: ReplicationDelta) -> Result<(), DeltaSinkError> {
-        self.sender.send(delta).map_err(|_| DeltaSinkError::Disconnected)
+        self.sender
+            .send(delta)
+            .map_err(|_| DeltaSinkError::Disconnected)
     }
 }
 
@@ -65,10 +67,7 @@ impl DeltaSinkReceiver {
 /// Create a new delta sink channel pair
 pub fn delta_sink_channel() -> (DeltaSinkSender, DeltaSinkReceiver) {
     let (sender, receiver) = mpsc::channel();
-    (
-        DeltaSinkSender { sender },
-        DeltaSinkReceiver { receiver },
-    )
+    (DeltaSinkSender { sender }, DeltaSinkReceiver { receiver })
 }
 
 /// Background worker that transfers deltas from the channel to the WriteBuffer
@@ -87,7 +86,8 @@ pub struct PersistenceWorkerHandle {
 impl PersistenceWorkerHandle {
     /// Signal the persistence worker to stop
     pub fn shutdown(&self) {
-        self.shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.shutdown
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -152,9 +152,9 @@ impl<S: crate::streaming::ObjectStore> PersistenceWorker<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::replication::state::ReplicatedValue;
-    use crate::replication::lattice::{ReplicaId, LamportClock};
     use crate::redis::SDS;
+    use crate::replication::lattice::{LamportClock, ReplicaId};
+    use crate::replication::state::ReplicatedValue;
 
     fn make_test_delta(key: &str, value: &str) -> ReplicationDelta {
         let replica_id = ReplicaId::new(1);
@@ -217,7 +217,12 @@ mod tests {
 
         // Send some deltas
         for i in 0..5 {
-            sender.send(make_test_delta(&format!("key{}", i), &format!("value{}", i))).unwrap();
+            sender
+                .send(make_test_delta(
+                    &format!("key{}", i),
+                    &format!("value{}", i),
+                ))
+                .unwrap();
         }
 
         // Give it time to process

@@ -17,9 +17,9 @@
 //! }
 //! ```
 
+use super::lattice::{GCounter, ORSet, PNCounter, ReplicaId, VectorClock};
 use crate::io::simulation::SimulatedRng;
 use crate::io::Rng;
-use super::lattice::{GCounter, PNCounter, ORSet, VectorClock, ReplicaId};
 use std::collections::HashMap;
 
 /// Configuration for CRDT DST
@@ -157,9 +157,7 @@ pub struct GCounterDSTHarness {
 impl GCounterDSTHarness {
     pub fn new(config: CRDTDSTConfig) -> Self {
         let rng = SimulatedRng::new(config.seed);
-        let replicas = (0..config.num_replicas)
-            .map(|_| GCounter::new())
-            .collect();
+        let replicas = (0..config.num_replicas).map(|_| GCounter::new()).collect();
 
         GCounterDSTHarness {
             result: CRDTDSTResult::new(config.seed),
@@ -267,9 +265,7 @@ pub struct PNCounterDSTHarness {
 impl PNCounterDSTHarness {
     pub fn new(config: CRDTDSTConfig) -> Self {
         let rng = SimulatedRng::new(config.seed);
-        let replicas = (0..config.num_replicas)
-            .map(|_| PNCounter::new())
-            .collect();
+        let replicas = (0..config.num_replicas).map(|_| PNCounter::new()).collect();
 
         PNCounterDSTHarness {
             result: CRDTDSTResult::new(config.seed),
@@ -373,9 +369,7 @@ pub struct ORSetDSTHarness {
 impl ORSetDSTHarness {
     pub fn new(config: CRDTDSTConfig) -> Self {
         let rng = SimulatedRng::new(config.seed);
-        let replicas = (0..config.num_replicas)
-            .map(|_| ORSet::new())
-            .collect();
+        let replicas = (0..config.num_replicas).map(|_| ORSet::new()).collect();
 
         ORSetDSTHarness {
             result: CRDTDSTResult::new(config.seed),
@@ -547,10 +541,9 @@ impl VectorClockDSTHarness {
             replica.verify_invariants();
 
             if *replica != self.replicas[0] {
-                self.result.invariant_violations.push(format!(
-                    "Replica {} has different clock than replica 0",
-                    i
-                ));
+                self.result
+                    .invariant_violations
+                    .push(format!("Replica {} has different clock than replica 0", i));
             }
         }
 
@@ -571,7 +564,12 @@ impl VectorClockDSTHarness {
 // =============================================================================
 
 /// Run a batch of GCounter DST tests
-pub fn run_gcounter_batch(base_seed: u64, count: usize, ops_per_run: usize, config_fn: impl Fn(u64) -> CRDTDSTConfig) -> Vec<CRDTDSTResult> {
+pub fn run_gcounter_batch(
+    base_seed: u64,
+    count: usize,
+    ops_per_run: usize,
+    config_fn: impl Fn(u64) -> CRDTDSTConfig,
+) -> Vec<CRDTDSTResult> {
     let mut results = Vec::with_capacity(count);
 
     for i in 0..count {
@@ -590,7 +588,12 @@ pub fn run_gcounter_batch(base_seed: u64, count: usize, ops_per_run: usize, conf
 }
 
 /// Run a batch of PNCounter DST tests
-pub fn run_pncounter_batch(base_seed: u64, count: usize, ops_per_run: usize, config_fn: impl Fn(u64) -> CRDTDSTConfig) -> Vec<CRDTDSTResult> {
+pub fn run_pncounter_batch(
+    base_seed: u64,
+    count: usize,
+    ops_per_run: usize,
+    config_fn: impl Fn(u64) -> CRDTDSTConfig,
+) -> Vec<CRDTDSTResult> {
     let mut results = Vec::with_capacity(count);
 
     for i in 0..count {
@@ -609,7 +612,12 @@ pub fn run_pncounter_batch(base_seed: u64, count: usize, ops_per_run: usize, con
 }
 
 /// Run a batch of ORSet DST tests
-pub fn run_orset_batch(base_seed: u64, count: usize, ops_per_run: usize, config_fn: impl Fn(u64) -> CRDTDSTConfig) -> Vec<CRDTDSTResult> {
+pub fn run_orset_batch(
+    base_seed: u64,
+    count: usize,
+    ops_per_run: usize,
+    config_fn: impl Fn(u64) -> CRDTDSTConfig,
+) -> Vec<CRDTDSTResult> {
     let mut results = Vec::with_capacity(count);
 
     for i in 0..count {
@@ -628,7 +636,12 @@ pub fn run_orset_batch(base_seed: u64, count: usize, ops_per_run: usize, config_
 }
 
 /// Run a batch of VectorClock DST tests
-pub fn run_vectorclock_batch(base_seed: u64, count: usize, ops_per_run: usize, config_fn: impl Fn(u64) -> CRDTDSTConfig) -> Vec<CRDTDSTResult> {
+pub fn run_vectorclock_batch(
+    base_seed: u64,
+    count: usize,
+    ops_per_run: usize,
+    config_fn: impl Fn(u64) -> CRDTDSTConfig,
+) -> Vec<CRDTDSTResult> {
     let mut results = Vec::with_capacity(count);
 
     for i in 0..count {
@@ -690,7 +703,11 @@ mod tests {
         harness.check_convergence();
 
         let result = harness.result();
-        assert!(result.is_success(), "Calm should converge: {:?}", result.invariant_violations);
+        assert!(
+            result.is_success(),
+            "Calm should converge: {:?}",
+            result.invariant_violations
+        );
     }
 
     #[test]
@@ -699,7 +716,10 @@ mod tests {
         let summary = summarize_batch(&results);
         println!("GCounter 100 seeds:\n{}", summary);
 
-        assert!(results.iter().all(|r| r.is_success()), "All calm runs should converge");
+        assert!(
+            results.iter().all(|r| r.is_success()),
+            "All calm runs should converge"
+        );
     }
 
     #[test]
@@ -726,7 +746,11 @@ mod tests {
         harness.check_convergence();
 
         let result = harness.result();
-        assert!(result.is_success(), "Calm should converge: {:?}", result.invariant_violations);
+        assert!(
+            result.is_success(),
+            "Calm should converge: {:?}",
+            result.invariant_violations
+        );
     }
 
     #[test]
@@ -735,7 +759,10 @@ mod tests {
         let summary = summarize_batch(&results);
         println!("PNCounter 100 seeds:\n{}", summary);
 
-        assert!(results.iter().all(|r| r.is_success()), "All calm runs should converge");
+        assert!(
+            results.iter().all(|r| r.is_success()),
+            "All calm runs should converge"
+        );
     }
 
     // =========================================================================
@@ -752,7 +779,11 @@ mod tests {
         harness.check_convergence();
 
         let result = harness.result();
-        assert!(result.is_success(), "Calm should converge: {:?}", result.invariant_violations);
+        assert!(
+            result.is_success(),
+            "Calm should converge: {:?}",
+            result.invariant_violations
+        );
     }
 
     #[test]
@@ -761,7 +792,10 @@ mod tests {
         let summary = summarize_batch(&results);
         println!("ORSet 100 seeds:\n{}", summary);
 
-        assert!(results.iter().all(|r| r.is_success()), "All calm runs should converge");
+        assert!(
+            results.iter().all(|r| r.is_success()),
+            "All calm runs should converge"
+        );
     }
 
     // =========================================================================
@@ -778,7 +812,11 @@ mod tests {
         harness.check_convergence();
 
         let result = harness.result();
-        assert!(result.is_success(), "Calm should converge: {:?}", result.invariant_violations);
+        assert!(
+            result.is_success(),
+            "Calm should converge: {:?}",
+            result.invariant_violations
+        );
     }
 
     #[test]
@@ -787,7 +825,10 @@ mod tests {
         let summary = summarize_batch(&results);
         println!("VectorClock 100 seeds:\n{}", summary);
 
-        assert!(results.iter().all(|r| r.is_success()), "All calm runs should converge");
+        assert!(
+            results.iter().all(|r| r.is_success()),
+            "All calm runs should converge"
+        );
     }
 
     // =========================================================================

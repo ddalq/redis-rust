@@ -1,10 +1,10 @@
-pub mod io;
 pub mod buggify;
-pub mod simulator;
-pub mod redis;
-pub mod production;
-pub mod replication;
+pub mod io;
 pub mod metrics;
+pub mod production;
+pub mod redis;
+pub mod replication;
+pub mod simulator;
 pub mod streaming;
 
 // Observability: feature-gated Datadog integration
@@ -15,5 +15,5 @@ pub mod observability;
 #[path = "observability_noop.rs"]
 pub mod observability;
 
-pub use simulator::{Simulation, SimulationConfig, Host, NetworkEvent};
-pub use redis::{RedisServer, RedisClient, Value, RespParser};
+pub use redis::{RedisClient, RedisServer, RespParser, Value};
+pub use simulator::{Host, NetworkEvent, Simulation, SimulationConfig};

@@ -96,12 +96,9 @@ impl AdaptiveReplicationManager {
         // Invariant 2: All RF overrides should equal hot_key_rf (consistency)
         for (key, &rf) in &self.key_rf_overrides {
             debug_assert_eq!(
-                rf,
-                self.config.hot_key_rf,
+                rf, self.config.hot_key_rf,
                 "Invariant violated: key '{}' has RF {} but hot_key_rf is {}",
-                key,
-                rf,
-                self.config.hot_key_rf
+                key, rf, self.config.hot_key_rf
             );
         }
 
@@ -165,12 +162,14 @@ impl AdaptiveReplicationManager {
     /// Recalculate hot keys and update RF overrides
     pub fn recalculate(&mut self, now_ms: u64) {
         let hot_keys = self.hotkey_detector.get_hot_keys(now_ms);
-        let hot_key_set: std::collections::HashSet<_> = hot_keys.iter().map(|(k, _)| k.clone()).collect();
+        let hot_key_set: std::collections::HashSet<_> =
+            hot_keys.iter().map(|(k, _)| k.clone()).collect();
 
         // Promote new hot keys
         for (key, _rate) in &hot_keys {
             if !self.key_rf_overrides.contains_key(key) {
-                self.key_rf_overrides.insert(key.clone(), self.config.hot_key_rf);
+                self.key_rf_overrides
+                    .insert(key.clone(), self.config.hot_key_rf);
                 self.stats_promotions.fetch_add(1, Ordering::Relaxed);
             }
         }

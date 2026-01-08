@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod resp_parser_tests {
-    use super::super::{RespParser, RespValue, RespCodec, RespValueZeroCopy};
+    use super::super::{RespCodec, RespParser, RespValue, RespValueZeroCopy};
     use bytes::BytesMut;
 
     fn test_parse_equivalence(input: &[u8]) {
@@ -10,8 +10,11 @@ mod resp_parser_tests {
 
         match (old_result, new_result) {
             (Ok((old_val, _)), Ok(Some(new_val))) => {
-                assert!(values_equivalent(&old_val, &new_val), 
-                    "Parsed values differ for input: {:?}", input);
+                assert!(
+                    values_equivalent(&old_val, &new_val),
+                    "Parsed values differ for input: {:?}",
+                    input
+                );
             }
             (Err(_), Ok(None)) | (Err(_), Err(_)) => {}
             (Ok(_), Ok(None)) => panic!("New parser incomplete where old succeeded"),
@@ -25,9 +28,7 @@ mod resp_parser_tests {
             (RespValue::SimpleString(s1), RespValueZeroCopy::SimpleString(s2)) => {
                 s1.as_bytes() == s2.as_ref()
             }
-            (RespValue::Error(s1), RespValueZeroCopy::Error(s2)) => {
-                s1.as_bytes() == s2.as_ref()
-            }
+            (RespValue::Error(s1), RespValueZeroCopy::Error(s2)) => s1.as_bytes() == s2.as_ref(),
             (RespValue::Integer(n1), RespValueZeroCopy::Integer(n2)) => n1 == n2,
             (RespValue::BulkString(None), RespValueZeroCopy::BulkString(None)) => true,
             (RespValue::BulkString(Some(d1)), RespValueZeroCopy::BulkString(Some(d2))) => {
@@ -35,8 +36,11 @@ mod resp_parser_tests {
             }
             (RespValue::Array(None), RespValueZeroCopy::Array(None)) => true,
             (RespValue::Array(Some(a1)), RespValueZeroCopy::Array(Some(a2))) => {
-                a1.len() == a2.len() && 
-                a1.iter().zip(a2.iter()).all(|(v1, v2)| values_equivalent(v1, v2))
+                a1.len() == a2.len()
+                    && a1
+                        .iter()
+                        .zip(a2.iter())
+                        .all(|(v1, v2)| values_equivalent(v1, v2))
             }
             _ => false,
         }
@@ -265,8 +269,8 @@ mod command_parser_tests {
 
     #[test]
     fn test_hincrby_execution() {
-        use super::super::CommandExecutor;
         use super::super::data::SDS;
+        use super::super::CommandExecutor;
 
         let mut executor = CommandExecutor::new();
 
@@ -288,12 +292,10 @@ mod command_parser_tests {
 
     #[test]
     fn test_ping_from_both_parsers() {
-        let old_resp = RespValue::Array(Some(vec![
-            RespValue::BulkString(Some(b"PING".to_vec()))
-        ]));
-        let new_resp = RespValueZeroCopy::Array(Some(vec![
-            RespValueZeroCopy::BulkString(Some(Bytes::from_static(b"PING")))
-        ]));
+        let old_resp = RespValue::Array(Some(vec![RespValue::BulkString(Some(b"PING".to_vec()))]));
+        let new_resp = RespValueZeroCopy::Array(Some(vec![RespValueZeroCopy::BulkString(Some(
+            Bytes::from_static(b"PING"),
+        ))]));
 
         let old_cmd = Command::from_resp(&old_resp).unwrap();
         let new_cmd = Command::from_resp_zero_copy(&new_resp).unwrap();
@@ -319,7 +321,14 @@ mod command_parser_tests {
         let new_cmd = Command::from_resp_zero_copy(&new_resp).unwrap();
 
         match (old_cmd, new_cmd) {
-            (Command::Set { key: k1, value: v1, .. }, Command::Set { key: k2, value: v2, .. }) => {
+            (
+                Command::Set {
+                    key: k1, value: v1, ..
+                },
+                Command::Set {
+                    key: k2, value: v2, ..
+                },
+            ) => {
                 assert_eq!(k1, k2);
                 assert_eq!(v1.as_bytes(), v2.as_bytes());
             }
@@ -353,8 +362,8 @@ mod command_parser_tests {
 #[cfg(test)]
 #[cfg(feature = "lua")]
 mod lua_scripting_tests {
-    use super::super::{Command, CommandExecutor, RespValue};
     use super::super::data::SDS;
+    use super::super::{Command, CommandExecutor, RespValue};
 
     #[test]
     fn test_eval_simple_return() {
@@ -494,7 +503,10 @@ mod lua_scripting_tests {
             args: vec![SDS::from_str("suffix")],
         };
         let result = executor.execute(&cmd);
-        assert_eq!(result, RespValue::BulkString(Some(b"prefix:suffix".to_vec())));
+        assert_eq!(
+            result,
+            RespValue::BulkString(Some(b"prefix:suffix".to_vec()))
+        );
     }
 
     #[test]
@@ -650,7 +662,8 @@ mod lua_scripting_tests {
                 redis.call("SET", "test_key", "test_value")
                 local v = redis.call("GET", "test_key")
                 return v
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -676,7 +689,8 @@ mod lua_scripting_tests {
                 local n1 = redis.call("INCR", "counter")
                 local n2 = redis.call("INCR", "counter")
                 return n1 + n2
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -697,7 +711,8 @@ mod lua_scripting_tests {
                 local len = redis.call("LLEN", "mylist")
                 local first = redis.call("LPOP", "mylist")
                 return {len, first}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -727,7 +742,8 @@ mod lua_scripting_tests {
                 else
                     return "no_error"
                 end
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -822,16 +838,14 @@ mod lua_scripting_tests {
             script: r#"
                 redis.call("SET", KEYS[1], ARGV[1])
                 return redis.call("GET", KEYS[1])
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec!["mykey".to_string()],
             args: vec![SDS::from_str("myvalue")],
         };
         let result = executor.execute(&cmd);
 
-        assert_eq!(
-            result,
-            RespValue::BulkString(Some(b"myvalue".to_vec()))
-        );
+        assert_eq!(result, RespValue::BulkString(Some(b"myvalue".to_vec())));
     }
 
     #[test]
@@ -844,7 +858,8 @@ mod lua_scripting_tests {
                 local v1 = redis.call("HGET", "myhash", "field1")
                 local v2 = redis.call("HGET", "myhash", "field2")
                 return {v1, v2}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -877,7 +892,8 @@ mod lua_scripting_tests {
                 local first_ok = result1 ~= nil
                 local second_nil = result2 == nil
                 return {first_ok, second_nil, value}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -911,7 +927,8 @@ mod lua_scripting_tests {
                 local first_nil = result1 == nil
                 local second_ok = result2 ~= nil
                 return {first_nil, second_ok, value}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -924,7 +941,10 @@ mod lua_scripting_tests {
             // Second XX should succeed -> true = 1
             assert_eq!(elements[1], RespValue::Integer(1));
             // Value should be updated
-            assert_eq!(elements[2], RespValue::BulkString(Some(b"updated".to_vec())));
+            assert_eq!(
+                elements[2],
+                RespValue::BulkString(Some(b"updated".to_vec()))
+            );
         } else {
             panic!("Expected array result, got {:?}", result);
         }
@@ -940,7 +960,8 @@ mod lua_scripting_tests {
                 local new_val = redis.call("HINCRBY", "stats", "views", 10)
                 local final_val = redis.call("HGET", "stats", "views")
                 return {new_val, final_val}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -966,7 +987,8 @@ mod lua_scripting_tests {
                 local queue_len = redis.call("LLEN", "queue")
                 local proc_len = redis.call("LLEN", "processing")
                 return {job, queue_len, proc_len}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -993,7 +1015,8 @@ mod lua_scripting_tests {
                 local src_items = redis.call("LRANGE", "src", 0, -1)
                 local dst_items = redis.call("LRANGE", "dst", 0, -1)
                 return {moved, #src_items, #dst_items}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -1018,7 +1041,8 @@ mod lua_scripting_tests {
                 redis.call("ZADD", "scores", 10, "alice", 20, "bob", 30, "charlie", 40, "dave")
                 local results = redis.call("ZRANGEBYSCORE", "scores", "15", "35")
                 return results
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -1027,7 +1051,10 @@ mod lua_scripting_tests {
         if let RespValue::Array(Some(elements)) = result {
             assert_eq!(elements.len(), 2);
             assert_eq!(elements[0], RespValue::BulkString(Some(b"bob".to_vec())));
-            assert_eq!(elements[1], RespValue::BulkString(Some(b"charlie".to_vec())));
+            assert_eq!(
+                elements[1],
+                RespValue::BulkString(Some(b"charlie".to_vec()))
+            );
         } else {
             panic!("Expected array result, got {:?}", result);
         }
@@ -1043,7 +1070,8 @@ mod lua_scripting_tests {
                 local count1 = redis.call("ZCOUNT", "scores", "20", "40")
                 local count2 = redis.call("ZCOUNT", "scores", "-inf", "+inf")
                 return {count1, count2}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -1070,7 +1098,8 @@ mod lua_scripting_tests {
                 local deleted = redis.call("DEL", "k1", "k2", "nonexistent")
                 local exists_k3 = redis.call("EXISTS", "k3")
                 return {deleted, exists_k3}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -1109,7 +1138,8 @@ mod lua_scripting_tests {
                 local status = redis.call("HGET", job, "status")
 
                 return {job, status, job_count}
-            "#.to_string(),
+            "#
+            .to_string(),
             keys: vec![],
             args: vec![],
         };
@@ -1118,7 +1148,10 @@ mod lua_scripting_tests {
         if let RespValue::Array(Some(elements)) = result {
             assert_eq!(elements.len(), 3);
             assert_eq!(elements[0], RespValue::BulkString(Some(b"job:3".to_vec())));
-            assert_eq!(elements[1], RespValue::BulkString(Some(b"processing".to_vec())));
+            assert_eq!(
+                elements[1],
+                RespValue::BulkString(Some(b"processing".to_vec()))
+            );
             assert_eq!(elements[2], RespValue::Integer(1));
         } else {
             panic!("Expected array result, got {:?}", result);
@@ -1526,11 +1559,7 @@ mod new_command_tests {
 
         executor.execute(&Command::RPush(
             "mylist".to_string(),
-            vec![
-                SDS::from_str("a"),
-                SDS::from_str("b"),
-                SDS::from_str("c"),
-            ],
+            vec![SDS::from_str("a"), SDS::from_str("b"), SDS::from_str("c")],
         ));
 
         // Keep last 2 elements
@@ -1662,10 +1691,7 @@ mod new_command_tests {
             "src".to_string(),
             vec![SDS::from_str("a"), SDS::from_str("b"), SDS::from_str("c")],
         ));
-        executor.execute(&Command::RPush(
-            "dst".to_string(),
-            vec![SDS::from_str("x")],
-        ));
+        executor.execute(&Command::RPush("dst".to_string(), vec![SDS::from_str("x")]));
 
         let cmd = Command::LMove {
             source: "src".to_string(),
@@ -1700,7 +1726,11 @@ mod new_command_tests {
                 (2.0, SDS::from_str("two")),
                 (3.0, SDS::from_str("three")),
             ],
-            nx: false, xx: false, gt: false, lt: false, ch: false,
+            nx: false,
+            xx: false,
+            gt: false,
+            lt: false,
+            ch: false,
         });
 
         let cmd = Command::ZCount("myzset".to_string(), "1".to_string(), "2".to_string());
@@ -1720,7 +1750,11 @@ mod new_command_tests {
                 (2.0, SDS::from_str("two")),
                 (3.0, SDS::from_str("three")),
             ],
-            nx: false, xx: false, gt: false, lt: false, ch: false,
+            nx: false,
+            xx: false,
+            gt: false,
+            lt: false,
+            ch: false,
         });
 
         let cmd = Command::ZCount("myzset".to_string(), "-inf".to_string(), "+inf".to_string());
@@ -1740,7 +1774,11 @@ mod new_command_tests {
                 (2.0, SDS::from_str("two")),
                 (3.0, SDS::from_str("three")),
             ],
-            nx: false, xx: false, gt: false, lt: false, ch: false,
+            nx: false,
+            xx: false,
+            gt: false,
+            lt: false,
+            ch: false,
         });
 
         // Exclusive min: (1 means > 1, not >= 1
@@ -1765,7 +1803,11 @@ mod new_command_tests {
                 (2.0, SDS::from_str("two")),
                 (3.0, SDS::from_str("three")),
             ],
-            nx: false, xx: false, gt: false, lt: false, ch: false,
+            nx: false,
+            xx: false,
+            gt: false,
+            lt: false,
+            ch: false,
         });
 
         let cmd = Command::ZRangeByScore {
@@ -1793,7 +1835,11 @@ mod new_command_tests {
         executor.execute(&Command::ZAdd {
             key: "myzset".to_string(),
             pairs: vec![(1.5, SDS::from_str("one")), (2.5, SDS::from_str("two"))],
-            nx: false, xx: false, gt: false, lt: false, ch: false,
+            nx: false,
+            xx: false,
+            gt: false,
+            lt: false,
+            ch: false,
         });
 
         let cmd = Command::ZRangeByScore {
@@ -1824,7 +1870,11 @@ mod new_command_tests {
                 (3.0, SDS::from_str("c")),
                 (4.0, SDS::from_str("d")),
             ],
-            nx: false, xx: false, gt: false, lt: false, ch: false,
+            nx: false,
+            xx: false,
+            gt: false,
+            lt: false,
+            ch: false,
         });
 
         let cmd = Command::ZRangeByScore {
@@ -1983,7 +2033,11 @@ mod new_command_tests {
                 (2.0, SDS::from_str("two")),
                 (3.0, SDS::from_str("three")),
             ],
-            nx: false, xx: false, gt: false, lt: false, ch: false,
+            nx: false,
+            xx: false,
+            gt: false,
+            lt: false,
+            ch: false,
         });
 
         let cmd = Command::ZScan {
@@ -2160,7 +2214,11 @@ mod new_command_tests {
         ));
 
         // HINCRBY should fail
-        let result = executor.execute(&Command::HIncrBy("myhash".to_string(), SDS::from_str("field"), 1));
+        let result = executor.execute(&Command::HIncrBy(
+            "myhash".to_string(),
+            SDS::from_str("field"),
+            1,
+        ));
         assert!(matches!(result, RespValue::Error(_)));
     }
 
@@ -2174,7 +2232,11 @@ mod new_command_tests {
         ));
 
         // This should overflow
-        let result = executor.execute(&Command::HIncrBy("myhash".to_string(), SDS::from_str("field"), 1));
+        let result = executor.execute(&Command::HIncrBy(
+            "myhash".to_string(),
+            SDS::from_str("field"),
+            1,
+        ));
         assert!(matches!(result, RespValue::Error(_)));
     }
 }

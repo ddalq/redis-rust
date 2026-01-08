@@ -29,9 +29,7 @@ pub enum TtlMessage {
     /// Trigger an immediate eviction check
     Tick,
     /// Graceful shutdown
-    Shutdown {
-        response: oneshot::Sender<()>,
-    },
+    Shutdown { response: oneshot::Sender<()> },
 }
 
 /// Handle for communicating with the TtlManagerActor
@@ -83,7 +81,10 @@ impl<T: TimeSource + Clone + Send + 'static> TtlManagerActor<T> {
         interval_ms: u64,
         metrics: Arc<Metrics>,
     ) -> (TtlManagerHandle, Self) {
-        debug_assert!(interval_ms > 0, "Precondition: TTL interval must be positive");
+        debug_assert!(
+            interval_ms > 0,
+            "Precondition: TTL interval must be positive"
+        );
 
         let (tx, rx) = mpsc::unbounded_channel();
         let handle = TtlManagerHandle { tx };

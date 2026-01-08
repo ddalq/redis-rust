@@ -37,14 +37,14 @@ pub struct SimulatedStoreConfig {
 impl Default for SimulatedStoreConfig {
     fn default() -> Self {
         SimulatedStoreConfig {
-            put_fail_prob: 0.01,        // 1%
-            get_fail_prob: 0.01,        // 1%
-            get_corrupt_prob: 0.001,    // 0.1%
-            timeout_prob: 0.005,        // 0.5%
-            partial_write_prob: 0.005,  // 0.5%
-            delete_fail_prob: 0.01,     // 1%
-            list_incomplete_prob: 0.02, // 2%
-            rename_fail_prob: 0.01,     // 1%
+            put_fail_prob: 0.01,             // 1%
+            get_fail_prob: 0.01,             // 1%
+            get_corrupt_prob: 0.001,         // 0.1%
+            timeout_prob: 0.005,             // 0.5%
+            partial_write_prob: 0.005,       // 0.5%
+            delete_fail_prob: 0.01,          // 1%
+            list_incomplete_prob: 0.02,      // 2%
+            rename_fail_prob: 0.01,          // 1%
             latency_range_us: (100, 10_000), // 0.1ms - 10ms
         }
     }
@@ -137,7 +137,9 @@ impl<S: ObjectStore + Clone, R: Rng> SimulatedObjectStore<S, R> {
     }
 }
 
-impl<S: ObjectStore + Clone + 'static, R: Rng + 'static> ObjectStore for SimulatedObjectStore<S, R> {
+impl<S: ObjectStore + Clone + 'static, R: Rng + 'static> ObjectStore
+    for SimulatedObjectStore<S, R>
+{
     fn put(&self, key: &str, data: &[u8]) -> Pin<Box<dyn Future<Output = IoResult<()>> + Send>> {
         let key = key.to_string();
         let data = data.to_vec();
@@ -331,7 +333,11 @@ impl<S: ObjectStore + Clone + 'static, R: Rng + 'static> ObjectStore for Simulat
             // Check for incomplete listing
             let should_truncate = {
                 let mut s = state.lock().unwrap();
-                crate::buggify!(&mut s.rng, faults::LIST_INCOMPLETE, config.list_incomplete_prob)
+                crate::buggify!(
+                    &mut s.rng,
+                    faults::LIST_INCOMPLETE,
+                    config.list_incomplete_prob
+                )
             };
             if should_truncate && result.objects.len() > 1 {
                 state.lock().unwrap().stats.list_incomplete += 1;
@@ -455,7 +461,10 @@ mod tests {
         }
 
         // Results should be identical
-        assert_eq!(results1, results2, "Deterministic stores should behave identically");
+        assert_eq!(
+            results1, results2,
+            "Deterministic stores should behave identically"
+        );
     }
 
     #[tokio::test]
@@ -520,8 +529,14 @@ mod tests {
         }
 
         // With high chaos, we expect some failures
-        assert!(failures > 0, "Expected some failures with high chaos config");
-        assert!(successes > 0, "Expected some successes even with high chaos");
+        assert!(
+            failures > 0,
+            "Expected some failures with high chaos config"
+        );
+        assert!(
+            successes > 0,
+            "Expected some successes even with high chaos"
+        );
 
         let stats = store.stats();
         assert!(stats.put_failures > 0 || stats.timeouts > 0 || stats.partial_writes > 0);

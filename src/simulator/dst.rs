@@ -18,9 +18,9 @@
 //! assert!(result.check_linearizability());
 //! ```
 
-use super::crash::{CrashConfig, CrashSimulator, CrashReason, NodeSnapshot};
+use super::crash::{CrashConfig, CrashReason, CrashSimulator, NodeSnapshot};
 use super::{HostId, VirtualTime};
-use crate::buggify::{self, FaultConfig, BuggifyStats};
+use crate::buggify::{self, BuggifyStats, FaultConfig};
 use crate::io::simulation::{ClockOffset, NodeId, SimulatedRng, SimulationContext};
 use crate::io::Rng;
 use std::collections::HashMap;
@@ -243,7 +243,10 @@ impl DSTSimulation {
         // Set up BUGGIFY configuration
         buggify::set_config(config.fault_config.clone());
 
-        let ctx = Arc::new(SimulationContext::new(config.seed, config.fault_config.clone()));
+        let ctx = Arc::new(SimulationContext::new(
+            config.seed,
+            config.fault_config.clone(),
+        ));
         let mut rng = SimulatedRng::new(config.seed);
         let mut crash_simulator = CrashSimulator::with_config(config.crash_config.clone());
 
@@ -321,11 +324,9 @@ impl DSTSimulation {
 
     /// Maybe crash a node based on BUGGIFY
     pub fn maybe_crash_node(&mut self, node: usize) -> bool {
-        let crashed = self.crash_simulator.maybe_crash(
-            &mut self.rng,
-            HostId(node),
-            self.current_time,
-        );
+        let crashed =
+            self.crash_simulator
+                .maybe_crash(&mut self.rng, HostId(node), self.current_time);
         if crashed {
             self.result.crashes += 1;
         }
@@ -334,13 +335,15 @@ impl DSTSimulation {
 
     /// Explicitly crash a node
     pub fn crash_node(&mut self, node: usize, reason: CrashReason) {
-        self.crash_simulator.crash_node(HostId(node), self.current_time, reason);
+        self.crash_simulator
+            .crash_node(HostId(node), self.current_time, reason);
         self.result.crashes += 1;
     }
 
     /// Start recovery for a crashed node
     pub fn start_recovery(&mut self, node: usize) -> Option<&NodeSnapshot> {
-        self.crash_simulator.start_recovery(&mut self.rng, HostId(node), self.current_time)
+        self.crash_simulator
+            .start_recovery(&mut self.rng, HostId(node), self.current_time)
     }
 
     /// Check if a node is running

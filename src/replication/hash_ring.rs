@@ -223,7 +223,11 @@ impl HashRing {
         };
 
         let variance = if counts.len() > 1 {
-            counts.iter().map(|&c| (c as f64 - mean).powi(2)).sum::<f64>() / counts.len() as f64
+            counts
+                .iter()
+                .map(|&c| (c as f64 - mean).powi(2))
+                .sum::<f64>()
+                / counts.len() as f64
         } else {
             0.0
         };
@@ -334,7 +338,9 @@ mod tests {
         let targets = ring.get_gossip_targets("key", ReplicaId::new(1));
 
         // Should not include sender
-        assert!(!targets.contains(&ReplicaId::new(1)) || !ring.is_responsible("key", ReplicaId::new(1)));
+        assert!(
+            !targets.contains(&ReplicaId::new(1)) || !ring.is_responsible("key", ReplicaId::new(1))
+        );
 
         // Should be a subset of replicas
         let replicas = ring.get_replicas("key");

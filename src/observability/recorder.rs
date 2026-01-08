@@ -6,9 +6,9 @@
 //!
 //! Following TigerStyle principles: all I/O through trait abstractions.
 
+use parking_lot::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use parking_lot::Mutex;
 
 /// Trait for recording metrics - enables DST-compatible observability
 pub trait MetricsRecorder: Send + Sync + 'static {
@@ -205,7 +205,8 @@ impl MetricsRecorder for SimulatedMetrics {
 
     fn record_ttl_eviction(&self, count: usize) {
         if count > 0 {
-            self.eviction_count.fetch_add(count as u64, Ordering::SeqCst);
+            self.eviction_count
+                .fetch_add(count as u64, Ordering::SeqCst);
             self.incr("ttl.evictions", &[]);
             self.histogram("ttl.evictions.batch_size", count as f64, &[]);
         }

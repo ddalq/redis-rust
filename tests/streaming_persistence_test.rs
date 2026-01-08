@@ -6,8 +6,8 @@ use redis_sim::production::ReplicatedShardedState;
 use redis_sim::redis::{Command, SDS};
 use redis_sim::replication::ReplicationConfig;
 use redis_sim::streaming::{
-    delta_sink_channel, InMemoryObjectStore, LocalFsObjectStore, ObjectStore,
-    DeltaSinkPersistenceWorker, SegmentReader, WriteBuffer, WriteBufferConfig,
+    delta_sink_channel, DeltaSinkPersistenceWorker, InMemoryObjectStore, LocalFsObjectStore,
+    ObjectStore, SegmentReader, WriteBuffer, WriteBufferConfig,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -51,9 +51,15 @@ async fn test_streaming_persistence_basic_flow() {
     state.set_delta_sink(sender);
 
     // Execute some commands
-    state.execute(Command::set("key1".to_string(), sds("value1"))).await;
-    state.execute(Command::set("key2".to_string(), sds("value2"))).await;
-    state.execute(Command::set("key3".to_string(), sds("value3"))).await;
+    state
+        .execute(Command::set("key1".to_string(), sds("value1")))
+        .await;
+    state
+        .execute(Command::set("key2".to_string(), sds("value2")))
+        .await;
+    state
+        .execute(Command::set("key3".to_string(), sds("value3")))
+        .await;
 
     // Give worker time to process
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -70,12 +76,22 @@ async fn test_streaming_persistence_basic_flow() {
 
     // Verify segment was written
     let stats = write_buffer.stats();
-    assert!(stats.total_deltas_flushed >= 3, "Expected at least 3 deltas flushed, got {}", stats.total_deltas_flushed);
-    assert!(stats.total_segments_written >= 1, "Expected at least 1 segment written");
+    assert!(
+        stats.total_deltas_flushed >= 3,
+        "Expected at least 3 deltas flushed, got {}",
+        stats.total_deltas_flushed
+    );
+    assert!(
+        stats.total_segments_written >= 1,
+        "Expected at least 1 segment written"
+    );
 
     // Verify we can read the segment back
     let list_result = store.list("segments/", None).await.unwrap();
-    assert!(!list_result.objects.is_empty(), "Expected at least one segment file");
+    assert!(
+        !list_result.objects.is_empty(),
+        "Expected at least one segment file"
+    );
 
     // Read and verify segment contents
     let segment_key = &list_result.objects[0].key;
@@ -87,7 +103,10 @@ async fn test_streaming_persistence_basic_flow() {
     assert!(!deltas.is_empty(), "Segment should contain deltas");
 
     // Verify delta contents
-    let keys: Vec<_> = deltas.iter().map(|d| d.as_ref().unwrap().key.as_str()).collect();
+    let keys: Vec<_> = deltas
+        .iter()
+        .map(|d| d.as_ref().unwrap().key.as_str())
+        .collect();
     assert!(keys.contains(&"key1"), "Should contain key1");
     assert!(keys.contains(&"key2"), "Should contain key2");
     assert!(keys.contains(&"key3"), "Should contain key3");
@@ -100,11 +119,7 @@ async fn test_streaming_persistence_localfs() {
     let store = Arc::new(LocalFsObjectStore::new(temp_dir.path().to_path_buf()));
 
     let config = WriteBufferConfig::test();
-    let write_buffer = Arc::new(WriteBuffer::new(
-        store.clone(),
-        "data".to_string(),
-        config,
-    ));
+    let write_buffer = Arc::new(WriteBuffer::new(store.clone(), "data".to_string(), config));
 
     let (sender, receiver) = delta_sink_channel();
     let (worker, handle) = DeltaSinkPersistenceWorker::new(receiver, write_buffer.clone());
@@ -115,7 +130,12 @@ async fn test_streaming_persistence_localfs() {
 
     // Execute commands
     for i in 0..10 {
-        state.execute(Command::set(format!("key{}", i), sds(&format!("value{}", i)))).await;
+        state
+            .execute(Command::set(
+                format!("key{}", i),
+                sds(&format!("value{}", i)),
+            ))
+            .await;
     }
 
     // Allow processing
@@ -130,7 +150,11 @@ async fn test_streaming_persistence_localfs() {
 
     // Verify segment file exists in temp dir
     let segment_path = temp_dir.path().join(&list_result.objects[0].key);
-    assert!(segment_path.exists(), "Segment file should exist at {:?}", segment_path);
+    assert!(
+        segment_path.exists(),
+        "Segment file should exist at {:?}",
+        segment_path
+    );
 
     // Read and validate
     let segment_data = store.get(&list_result.objects[0].key).await.unwrap();
@@ -149,11 +173,7 @@ async fn test_streaming_persistence_high_throughput() {
     config.max_deltas = 100; // Force flush every 100 deltas
     config.flush_interval = Duration::from_secs(60); // Disable time-based flush
 
-    let write_buffer = Arc::new(WriteBuffer::new(
-        store.clone(),
-        "ht".to_string(),
-        config,
-    ));
+    let write_buffer = Arc::new(WriteBuffer::new(store.clone(), "ht".to_string(), config));
 
     let (sender, receiver) = delta_sink_channel();
     let (worker, handle) = DeltaSinkPersistenceWorker::new(receiver, write_buffer.clone());
@@ -165,7 +185,9 @@ async fn test_streaming_persistence_high_throughput() {
     // Execute many commands
     let num_commands = 500;
     for i in 0..num_commands {
-        state.execute(Command::set(format!("k{}", i), sds(&format!("v{}", i)))).await;
+        state
+            .execute(Command::set(format!("k{}", i), sds(&format!("v{}", i))))
+            .await;
     }
 
     // Allow processing
@@ -178,7 +200,11 @@ async fn test_streaming_persistence_high_throughput() {
     let stats = write_buffer.stats();
     assert_eq!(stats.total_deltas_flushed, num_commands as u64);
     // Multiple segments should be written (at least 1, typically several)
-    assert!(stats.total_segments_written >= 1, "Expected at least 1 segment for {} deltas", num_commands);
+    assert!(
+        stats.total_segments_written >= 1,
+        "Expected at least 1 segment for {} deltas",
+        num_commands
+    );
 
     // Verify all segments are readable
     let list_result = store.list("ht/", None).await.unwrap();
@@ -191,7 +217,10 @@ async fn test_streaming_persistence_high_throughput() {
         total_deltas += reader.deltas().unwrap().count();
     }
 
-    assert_eq!(total_deltas, num_commands, "Total deltas across all segments should match");
+    assert_eq!(
+        total_deltas, num_commands,
+        "Total deltas across all segments should match"
+    );
 }
 
 /// Test persistence survives command executor state
@@ -215,8 +244,18 @@ async fn test_streaming_persistence_state_recovery() {
         let mut state = ReplicatedShardedState::new(test_config(1));
         state.set_delta_sink(sender);
 
-        state.execute(Command::set("persistent_key".to_string(), sds("persistent_value"))).await;
-        state.execute(Command::set("another_key".to_string(), sds("another_value"))).await;
+        state
+            .execute(Command::set(
+                "persistent_key".to_string(),
+                sds("persistent_value"),
+            ))
+            .await;
+        state
+            .execute(Command::set(
+                "another_key".to_string(),
+                sds("another_value"),
+            ))
+            .await;
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         handle.shutdown();
@@ -267,7 +306,9 @@ async fn test_streaming_persistence_multi_replica() {
         state.set_delta_sink(sender);
 
         for (key, value) in commands {
-            state.execute(Command::set(key.to_string(), SDS::from_str(value))).await;
+            state
+                .execute(Command::set(key.to_string(), SDS::from_str(value)))
+                .await;
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -290,14 +331,23 @@ async fn test_streaming_persistence_multi_replica() {
     for replica_id in 1..=3 {
         let prefix = format!("replica-{}/", replica_id);
         let list_result = store.list(&prefix, None).await.unwrap();
-        assert!(!list_result.objects.is_empty(), "Replica {} should have segments", replica_id);
+        assert!(
+            !list_result.objects.is_empty(),
+            "Replica {} should have segments",
+            replica_id
+        );
 
         // Verify segment contents
         let data = store.get(&list_result.objects[0].key).await.unwrap();
         let reader = SegmentReader::open(&data).unwrap();
         let deltas: Vec<_> = reader.deltas().unwrap().collect();
 
-        assert_eq!(deltas.len(), 2, "Replica {} should have 2 deltas", replica_id);
+        assert_eq!(
+            deltas.len(),
+            2,
+            "Replica {} should have 2 deltas",
+            replica_id
+        );
         let key_prefix = format!("r{}k", replica_id);
         assert!(deltas[0].as_ref().unwrap().key.starts_with(&key_prefix));
     }
@@ -311,11 +361,7 @@ async fn test_streaming_persistence_backpressure() {
     config.backpressure_threshold_bytes = 500; // Very small threshold
     config.flush_interval = Duration::from_secs(60); // Disable auto-flush
 
-    let write_buffer = Arc::new(WriteBuffer::new(
-        store.clone(),
-        "bp".to_string(),
-        config,
-    ));
+    let write_buffer = Arc::new(WriteBuffer::new(store.clone(), "bp".to_string(), config));
 
     let (sender, receiver) = delta_sink_channel();
 
@@ -328,7 +374,12 @@ async fn test_streaming_persistence_backpressure() {
     // In this test we're checking that the delta sink send succeeds even without
     // the worker running (channel is unbounded)
     for i in 0..100 {
-        state.execute(Command::set(format!("key{}", i), sds(&format!("value{}", i)))).await;
+        state
+            .execute(Command::set(
+                format!("key{}", i),
+                sds(&format!("value{}", i)),
+            ))
+            .await;
     }
 
     // Now start the worker and verify it can drain
@@ -344,7 +395,10 @@ async fn test_streaming_persistence_backpressure() {
     worker_task.await.unwrap();
 
     let stats = write_buffer.stats();
-    assert!(stats.total_deltas_flushed > 0, "Should have flushed some deltas");
+    assert!(
+        stats.total_deltas_flushed > 0,
+        "Should have flushed some deltas"
+    );
 }
 
 /// Test segment ordering
@@ -370,7 +424,12 @@ async fn test_streaming_persistence_segment_ordering() {
 
     // Write sequentially numbered keys
     for i in 0..25 {
-        state.execute(Command::set(format!("seq{:03}", i), sds(&format!("v{}", i)))).await;
+        state
+            .execute(Command::set(
+                format!("seq{:03}", i),
+                sds(&format!("v{}", i)),
+            ))
+            .await;
         // Small delay to ensure ordering
         if i % 5 == 4 {
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -389,7 +448,12 @@ async fn test_streaming_persistence_segment_ordering() {
     // Should have segments like segment-00000000.seg, segment-00000001.seg, etc.
     for (i, name) in segment_names.iter().enumerate() {
         let expected_suffix = format!("segment-{:08}.seg", i);
-        assert!(name.ends_with(&expected_suffix), "Segment {} should end with {}", name, expected_suffix);
+        assert!(
+            name.ends_with(&expected_suffix),
+            "Segment {} should end with {}",
+            name,
+            expected_suffix
+        );
     }
 }
 
@@ -412,9 +476,13 @@ async fn test_streaming_persistence_deletes() {
     state.set_delta_sink(sender);
 
     // Set and then delete
-    state.execute(Command::set("to_delete".to_string(), sds("temporary"))).await;
+    state
+        .execute(Command::set("to_delete".to_string(), sds("temporary")))
+        .await;
     state.execute(Command::del("to_delete".to_string())).await;
-    state.execute(Command::set("to_keep".to_string(), sds("permanent"))).await;
+    state
+        .execute(Command::set("to_keep".to_string(), sds("permanent")))
+        .await;
 
     tokio::time::sleep(Duration::from_millis(100)).await;
     handle.shutdown();
@@ -428,7 +496,10 @@ async fn test_streaming_persistence_deletes() {
     let deltas: Vec<_> = reader.deltas().unwrap().filter_map(|r| r.ok()).collect();
 
     // Should have 3 deltas: SET to_delete, DEL to_delete, SET to_keep
-    assert!(deltas.len() >= 2, "Should have at least set and delete deltas");
+    assert!(
+        deltas.len() >= 2,
+        "Should have at least set and delete deltas"
+    );
 
     let keys: Vec<_> = deltas.iter().map(|d| d.key.as_str()).collect();
     assert!(keys.contains(&"to_delete"), "Should have to_delete key");
@@ -465,7 +536,10 @@ async fn test_streaming_persistence_concurrent_writes() {
 
     fn make_delta(key: &str, value: &str) -> ReplicationDelta {
         let replica_id = ReplicaId::new(1);
-        let clock = LamportClock { time: 1000, replica_id };
+        let clock = LamportClock {
+            time: 1000,
+            replica_id,
+        };
         let replicated = ReplicatedValue::with_value(SDS::from_str(value), clock);
         ReplicationDelta::new(key.to_string(), replicated, replica_id)
     }
@@ -473,13 +547,17 @@ async fn test_streaming_persistence_concurrent_writes() {
     // Spawn concurrent writers
     let w1 = tokio::spawn(async move {
         for i in 0..50 {
-            sender1.send(make_delta(&format!("w1k{}", i), &format!("v{}", i))).unwrap();
+            sender1
+                .send(make_delta(&format!("w1k{}", i), &format!("v{}", i)))
+                .unwrap();
         }
     });
 
     let w2 = tokio::spawn(async move {
         for i in 0..50 {
-            sender2.send(make_delta(&format!("w2k{}", i), &format!("v{}", i))).unwrap();
+            sender2
+                .send(make_delta(&format!("w2k{}", i), &format!("v{}", i)))
+                .unwrap();
         }
     });
 
@@ -492,7 +570,10 @@ async fn test_streaming_persistence_concurrent_writes() {
 
     // Verify all 100 deltas were persisted
     let stats = write_buffer.stats();
-    assert_eq!(stats.total_deltas_flushed, 100, "All deltas should be flushed");
+    assert_eq!(
+        stats.total_deltas_flushed, 100,
+        "All deltas should be flushed"
+    );
 
     // Count deltas across all segments
     let list_result = store.list("concurrent/", None).await.unwrap();

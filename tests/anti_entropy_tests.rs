@@ -4,14 +4,17 @@
 //! without requiring new writes.
 
 use redis_sim::redis::{Command, SDS};
-use redis_sim::replication::{ReplicaId, StateDigest};
-use redis_sim::replication::state::ReplicatedValue;
 use redis_sim::replication::lattice::LamportClock;
+use redis_sim::replication::state::ReplicatedValue;
+use redis_sim::replication::{ReplicaId, StateDigest};
 use redis_sim::simulator::multi_node::MultiNodeSimulation;
 use std::collections::HashMap;
 
 fn make_value(s: &str, timestamp: u64, replica: ReplicaId) -> ReplicatedValue {
-    let clock = LamportClock { time: timestamp, replica_id: replica };
+    let clock = LamportClock {
+        time: timestamp,
+        replica_id: replica,
+    };
     ReplicatedValue::with_value(SDS::from_str(s), clock)
 }
 
@@ -43,8 +46,14 @@ fn test_anti_entropy_auto_sync_on_partition_heal() {
     assert_eq!(sim.nodes[2].get_replicated_value("key3"), None);
 
     // But nodes 0 and 1 should have them
-    assert_eq!(sim.nodes[0].get_replicated_value("key2"), Some("value2".to_string()));
-    assert_eq!(sim.nodes[1].get_replicated_value("key3"), Some("value3".to_string()));
+    assert_eq!(
+        sim.nodes[0].get_replicated_value("key2"),
+        Some("value2".to_string())
+    );
+    assert_eq!(
+        sim.nodes[1].get_replicated_value("key3"),
+        Some("value3".to_string())
+    );
 
     // Heal partition - anti-entropy should automatically sync
     sim.heal_partition(0, 2);
@@ -71,7 +80,10 @@ fn test_anti_entropy_auto_sync_on_partition_heal() {
     assert!(sim.check_key_convergence("key3"));
 
     println!("Anti-entropy syncs performed: {}", sim.anti_entropy_syncs);
-    assert!(sim.anti_entropy_syncs > 0, "Should have performed anti-entropy syncs");
+    assert!(
+        sim.anti_entropy_syncs > 0,
+        "Should have performed anti-entropy syncs"
+    );
 }
 
 #[test]
@@ -84,8 +96,16 @@ fn test_anti_entropy_bidirectional_sync() {
     sim.partition(0, 1);
 
     // Write different keys on each side
-    sim.execute(1, 0, Command::set("only_on_0".into(), SDS::from_str("value_0")));
-    sim.execute(2, 1, Command::set("only_on_1".into(), SDS::from_str("value_1")));
+    sim.execute(
+        1,
+        0,
+        Command::set("only_on_0".into(), SDS::from_str("value_0")),
+    );
+    sim.execute(
+        2,
+        1,
+        Command::set("only_on_1".into(), SDS::from_str("value_1")),
+    );
     sim.converge(10);
 
     // Verify isolation
@@ -167,12 +187,28 @@ fn test_anti_entropy_split_brain_recovery() {
     sim.partition(1, 3);
 
     // Write different values to same key on both sides
-    sim.execute(1, 0, Command::set("conflict".into(), SDS::from_str("group_a")));
-    sim.execute(2, 2, Command::set("conflict".into(), SDS::from_str("group_b")));
+    sim.execute(
+        1,
+        0,
+        Command::set("conflict".into(), SDS::from_str("group_a")),
+    );
+    sim.execute(
+        2,
+        2,
+        Command::set("conflict".into(), SDS::from_str("group_b")),
+    );
 
     // Also write unique keys on each side
-    sim.execute(3, 0, Command::set("unique_a".into(), SDS::from_str("from_a")));
-    sim.execute(4, 2, Command::set("unique_b".into(), SDS::from_str("from_b")));
+    sim.execute(
+        3,
+        0,
+        Command::set("unique_a".into(), SDS::from_str("from_a")),
+    );
+    sim.execute(
+        4,
+        2,
+        Command::set("unique_b".into(), SDS::from_str("from_b")),
+    );
 
     sim.converge(10);
 
@@ -290,7 +326,11 @@ fn test_anti_entropy_preserves_lww_semantics() {
     let mut sim = MultiNodeSimulation::new(2, 42);
 
     // Write initial value
-    sim.execute(1, 0, Command::set("lww_key".into(), SDS::from_str("initial")));
+    sim.execute(
+        1,
+        0,
+        Command::set("lww_key".into(), SDS::from_str("initial")),
+    );
     sim.converge(10);
 
     // Partition
@@ -298,13 +338,21 @@ fn test_anti_entropy_preserves_lww_semantics() {
 
     // Write different values with different timestamps
     // Node 0 writes first (lower timestamp)
-    sim.execute(2, 0, Command::set("lww_key".into(), SDS::from_str("from_0")));
+    sim.execute(
+        2,
+        0,
+        Command::set("lww_key".into(), SDS::from_str("from_0")),
+    );
 
     // Advance time significantly
     sim.advance_time_ms(1000);
 
     // Node 1 writes later (higher timestamp) - should win
-    sim.execute(3, 1, Command::set("lww_key".into(), SDS::from_str("from_1_later")));
+    sim.execute(
+        3,
+        1,
+        Command::set("lww_key".into(), SDS::from_str("from_1_later")),
+    );
 
     sim.converge(10);
 

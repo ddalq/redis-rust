@@ -1,10 +1,10 @@
-use super::{ShardedActorState, ConnectionPool, PerformanceConfig};
-use super::connection_optimized::{OptimizedConnectionHandler, ConnectionConfig};
+use super::connection_optimized::{ConnectionConfig, OptimizedConnectionHandler};
 use super::ttl_manager::TtlManagerActor;
+use super::{ConnectionPool, PerformanceConfig, ShardedActorState};
 use crate::observability::{DatadogConfig, Metrics};
-use tokio::net::TcpListener;
-use tracing::{info, error};
 use std::sync::Arc;
+use tokio::net::TcpListener;
+use tracing::{error, info};
 
 pub struct OptimizedRedisServer {
     addr: String,
@@ -38,13 +38,17 @@ impl OptimizedRedisServer {
         let connection_pool = Arc::new(ConnectionPool::new(10000, 512));
 
         // Create connection config from performance config
-        let conn_config = ConnectionConfig::from_perf_config(&perf_config.buffers, &perf_config.batching);
+        let conn_config =
+            ConnectionConfig::from_perf_config(&perf_config.buffers, &perf_config.batching);
 
         // Initialize metrics
         let dd_config = DatadogConfig::from_env();
         let metrics = Arc::new(Metrics::new(&dd_config));
 
-        info!("Initialized Tiger Style Redis with {} shards (lock-free)", perf_config.num_shards);
+        info!(
+            "Initialized Tiger Style Redis with {} shards (lock-free)",
+            perf_config.num_shards
+        );
 
         // Spawn TTL manager actor with shutdown handle
         let _ttl_handle = TtlManagerActor::spawn(state.clone(), metrics.clone());

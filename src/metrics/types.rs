@@ -1,9 +1,9 @@
 //! Core metric types for the aggregation service
 
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 /// Type of metric being tracked
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -345,7 +345,7 @@ mod tests {
     fn test_tag_set_hash_deterministic() {
         let tags1 = TagSet::from_pairs(&[("a", "1"), ("b", "2")]);
         let tags2 = TagSet::from_pairs(&[("b", "2"), ("a", "1")]); // Different order
-        // BTreeMap ensures sorted order, so hashes should match
+                                                                   // BTreeMap ensures sorted order, so hashes should match
         assert_eq!(tags1.hash(), tags2.hash());
     }
 

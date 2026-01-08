@@ -32,7 +32,6 @@ pub struct ReplicationConfig {
     // ========================================================================
     // Anna KVS-style partitioning settings
     // ========================================================================
-
     /// Enable partitioned sharding (keys distributed across nodes).
     /// When false, all nodes store all keys (full replication).
     /// When true, keys are assigned to `replication_factor` nodes via consistent hashing.

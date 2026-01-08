@@ -1,4 +1,4 @@
-use bytes::{Bytes, BytesMut, Buf};
+use bytes::{Buf, Bytes, BytesMut};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RespValueZeroCopy {
@@ -192,11 +192,16 @@ impl BufferPool {
         for _ in 0..size {
             let _ = pool.push(BytesMut::with_capacity(buffer_capacity));
         }
-        BufferPool { pool, capacity: buffer_capacity }
+        BufferPool {
+            pool,
+            capacity: buffer_capacity,
+        }
     }
 
     pub fn acquire(&self) -> BytesMut {
-        self.pool.pop().unwrap_or_else(|| BytesMut::with_capacity(self.capacity))
+        self.pool
+            .pop()
+            .unwrap_or_else(|| BytesMut::with_capacity(self.capacity))
     }
 
     pub fn release(&self, mut buf: BytesMut) {

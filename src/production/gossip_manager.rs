@@ -1,7 +1,7 @@
-use crate::replication::{ReplicaId, ReplicationConfig};
+use super::gossip_actor::GossipActorHandle;
 use crate::replication::gossip::{GossipMessage, GossipState, RoutedMessage};
 use crate::replication::state::ReplicationDelta;
-use super::gossip_actor::GossipActorHandle;
+use crate::replication::{ReplicaId, ReplicationConfig};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::time::interval;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
 pub type DeltaCallback = Arc<dyn Fn(Vec<ReplicationDelta>) + Send + Sync>;
 
@@ -58,7 +58,7 @@ impl GossipManager {
             let (stream, addr) = listener.accept().await?;
             info!("Gossip connection from {}", addr);
             let callback = delta_callback.clone();
-            
+
             tokio::spawn(async move {
                 if let Err(e) = Self::handle_peer_connection(stream, callback).await {
                     warn!("Gossip peer error: {}", e);
@@ -77,7 +77,7 @@ impl GossipManager {
                 break;
             }
             let msg_len = u32::from_be_bytes(len_buf) as usize;
-            
+
             if msg_len > 1024 * 1024 {
                 warn!("Message too large: {} bytes", msg_len);
                 break;
@@ -94,20 +94,32 @@ impl GossipManager {
                         GossipMessage::DeltaBatch { deltas, .. } => {
                             delta_callback(deltas);
                         }
-                        GossipMessage::TargetedDelta { deltas, target_replica, source_replica, .. } => {
+                        GossipMessage::TargetedDelta {
+                            deltas,
+                            target_replica,
+                            source_replica,
+                            ..
+                        } => {
                             // Targeted deltas are sent directly to the intended recipient
                             // In selective gossip mode, we only receive deltas for keys we're responsible for
                             info!(
                                 "Received targeted delta from replica {} (target: {}): {} deltas",
-                                source_replica.0, target_replica.0, deltas.len()
+                                source_replica.0,
+                                target_replica.0,
+                                deltas.len()
                             );
                             delta_callback(deltas);
                         }
-                        GossipMessage::Heartbeat { source_replica, epoch } => {
-                            info!("Heartbeat from replica {} epoch {}", source_replica.0, epoch);
+                        GossipMessage::Heartbeat {
+                            source_replica,
+                            epoch,
+                        } => {
+                            info!(
+                                "Heartbeat from replica {} epoch {}",
+                                source_replica.0, epoch
+                            );
                         }
-                        GossipMessage::SyncRequest { .. } => {
-                        }
+                        GossipMessage::SyncRequest { .. } => {}
                         GossipMessage::SyncResponse { deltas, .. } => {
                             delta_callback(deltas);
                         }
@@ -141,14 +153,18 @@ impl GossipManager {
         let selective_mode = config.uses_selective_gossip();
 
         // Build peer address map for selective routing
-        let peer_map: HashMap<ReplicaId, String> = peers.iter().enumerate().map(|(i, addr)| {
-            let peer_id = if (i as u64) >= config.replica_id {
-                (i as u64) + 2 // Skip our own ID
-            } else {
-                (i as u64) + 1
-            };
-            (ReplicaId::new(peer_id), addr.clone())
-        }).collect();
+        let peer_map: HashMap<ReplicaId, String> = peers
+            .iter()
+            .enumerate()
+            .map(|(i, addr)| {
+                let peer_id = if (i as u64) >= config.replica_id {
+                    (i as u64) + 2 // Skip our own ID
+                } else {
+                    (i as u64) + 1
+                };
+                (ReplicaId::new(peer_id), addr.clone())
+            })
+            .collect();
 
         info!(
             "Starting gossip loop with {} peers, interval {:?}, selective: {}",
@@ -235,14 +251,18 @@ impl GossipManager {
         let selective_mode = config.uses_selective_gossip();
 
         // Build peer address map for selective routing
-        let peer_map: HashMap<ReplicaId, String> = peers.iter().enumerate().map(|(i, addr)| {
-            let peer_id = if (i as u64) >= config.replica_id {
-                (i as u64) + 2 // Skip our own ID
-            } else {
-                (i as u64) + 1
-            };
-            (ReplicaId::new(peer_id), addr.clone())
-        }).collect();
+        let peer_map: HashMap<ReplicaId, String> = peers
+            .iter()
+            .enumerate()
+            .map(|(i, addr)| {
+                let peer_id = if (i as u64) >= config.replica_id {
+                    (i as u64) + 2 // Skip our own ID
+                } else {
+                    (i as u64) + 1
+                };
+                (ReplicaId::new(peer_id), addr.clone())
+            })
+            .collect();
 
         info!(
             "Starting actor-based gossip loop with {} peers, interval {:?}, selective: {}",

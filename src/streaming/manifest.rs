@@ -216,7 +216,9 @@ impl<S: ObjectStore> ManifestManager<S> {
         self.store.put(&self.temp_key, &data).await?;
 
         // Atomic rename (on POSIX systems)
-        self.store.rename(&self.temp_key, &self.manifest_key).await?;
+        self.store
+            .rename(&self.temp_key, &self.manifest_key)
+            .await?;
 
         Ok(())
     }

@@ -3,7 +3,10 @@
 //! Wraps tokio for real-world I/O operations.
 //! Zero overhead abstraction - all calls compile down to direct tokio calls.
 
-use super::{Clock, Duration, Network, NetworkListener, NetworkStream, Rng, Runtime, Ticker, Timestamp, TimeSource};
+use super::{
+    Clock, Duration, Network, NetworkListener, NetworkStream, Rng, Runtime, Ticker, TimeSource,
+    Timestamp,
+};
 use std::future::Future;
 use std::io::Result as IoResult;
 use std::pin::Pin;

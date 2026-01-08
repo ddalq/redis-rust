@@ -107,10 +107,7 @@ impl GossipRouter {
             for target in targets {
                 // Only include targets we have addresses for
                 if self.peer_addresses.contains_key(&target) {
-                    routing_table
-                        .entry(target)
-                        .or_default()
-                        .push(delta.clone());
+                    routing_table.entry(target).or_default().push(delta.clone());
                 }
             }
         }
@@ -280,7 +277,9 @@ mod tests {
     #[test]
     fn test_routing_stats() {
         let router = create_test_router(10, 1, true);
-        let deltas: Vec<_> = (0..100).map(|i| create_test_delta(&format!("key{}", i))).collect();
+        let deltas: Vec<_> = (0..100)
+            .map(|i| create_test_delta(&format!("key{}", i)))
+            .collect();
 
         let (_routing, stats) = router.route_with_stats(deltas);
 
@@ -317,7 +316,11 @@ mod tests {
             ratio * 100.0
         );
 
-        assert!(ratio > 0.5, "Expected >50% reduction, got {:.1}%", ratio * 100.0);
+        assert!(
+            ratio > 0.5,
+            "Expected >50% reduction, got {:.1}%",
+            ratio * 100.0
+        );
     }
 
     #[test]

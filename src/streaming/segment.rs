@@ -98,7 +98,11 @@ impl std::fmt::Display for SegmentError {
             SegmentError::InvalidMagic => write!(f, "Invalid segment magic number"),
             SegmentError::UnsupportedVersion(v) => write!(f, "Unsupported segment version: {}", v),
             SegmentError::ChecksumMismatch { expected, actual } => {
-                write!(f, "Checksum mismatch: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Checksum mismatch: expected {}, got {}",
+                    expected, actual
+                )
             }
             SegmentError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             SegmentError::Io(e) => write!(f, "I/O error: {}", e),
@@ -557,11 +561,8 @@ impl Iterator for DeltaIterator {
             ))));
         }
 
-        let len = u32::from_le_bytes(
-            self.data[self.offset..self.offset + 4]
-                .try_into()
-                .unwrap(),
-        ) as usize;
+        let len = u32::from_le_bytes(self.data[self.offset..self.offset + 4].try_into().unwrap())
+            as usize;
         self.offset += 4;
 
         if self.offset + len > self.data.len() {
@@ -601,9 +602,15 @@ mod tests {
     fn test_segment_roundtrip() {
         let mut writer = SegmentWriter::new(Compression::None);
 
-        writer.write_delta(&make_delta("key1", "value1", 100)).unwrap();
-        writer.write_delta(&make_delta("key2", "value2", 200)).unwrap();
-        writer.write_delta(&make_delta("key3", "value3", 300)).unwrap();
+        writer
+            .write_delta(&make_delta("key1", "value1", 100))
+            .unwrap();
+        writer
+            .write_delta(&make_delta("key2", "value2", 200))
+            .unwrap();
+        writer
+            .write_delta(&make_delta("key3", "value3", 300))
+            .unwrap();
 
         let data = writer.finish().unwrap();
         let reader = SegmentReader::open(&data).unwrap();
@@ -641,7 +648,9 @@ mod tests {
     #[test]
     fn test_segment_checksum_mismatch() {
         let mut writer = SegmentWriter::new(Compression::None);
-        writer.write_delta(&make_delta("key1", "value1", 100)).unwrap();
+        writer
+            .write_delta(&make_delta("key1", "value1", 100))
+            .unwrap();
 
         let mut data = writer.finish().unwrap();
 
@@ -674,7 +683,9 @@ mod tests {
         let mut writer = SegmentWriter::new(Compression::None);
         assert_eq!(writer.estimated_size(), HEADER_SIZE + FOOTER_SIZE);
 
-        writer.write_delta(&make_delta("key1", "value1", 100)).unwrap();
+        writer
+            .write_delta(&make_delta("key1", "value1", 100))
+            .unwrap();
         assert!(writer.estimated_size() > HEADER_SIZE + FOOTER_SIZE);
     }
 
@@ -686,7 +697,9 @@ mod tests {
         for i in 0..1000 {
             let key = format!("key{:06}", i);
             let value = format!("value{:06}", i);
-            writer.write_delta(&make_delta(&key, &value, i as u64)).unwrap();
+            writer
+                .write_delta(&make_delta(&key, &value, i as u64))
+                .unwrap();
         }
 
         let data = writer.finish().unwrap();

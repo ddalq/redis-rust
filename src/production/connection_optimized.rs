@@ -1,14 +1,14 @@
-use super::ShardedActorState;
 use super::connection_pool::BufferPoolAsync;
-use super::perf_config::{BufferConfig, BatchingConfig};
-use crate::redis::{Command, RespValue, RespCodec};
-use crate::observability::{Metrics, spans};
-use bytes::{BytesMut, BufMut};
+use super::perf_config::{BatchingConfig, BufferConfig};
+use super::ShardedActorState;
+use crate::observability::{spans, Metrics};
+use crate::redis::{Command, RespCodec, RespValue};
+use bytes::{BufMut, BytesMut};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tracing::{info, warn, error, debug, Instrument};
+use tracing::{debug, error, info, warn, Instrument};
 
 /// Connection configuration (from PerformanceConfig)
 #[derive(Clone)]
@@ -22,7 +22,7 @@ pub struct ConnectionConfig {
 impl Default for ConnectionConfig {
     fn default() -> Self {
         Self {
-            max_buffer_size: 1024 * 1024,  // 1MB
+            max_buffer_size: 1024 * 1024, // 1MB
             read_buffer_size: 8192,
             min_pipeline_buffer: 60,
             batch_threshold: 2,
@@ -65,9 +65,14 @@ impl OptimizedConnectionHandler {
     ) -> Self {
         let buffer = buffer_pool.acquire();
         let write_buffer = buffer_pool.acquire();
-        debug_assert!(buffer.capacity() > 0, "Buffer pool returned zero-capacity buffer");
-        debug_assert!(config.max_buffer_size >= config.read_buffer_size,
-            "max_buffer_size must be >= read_buffer_size");
+        debug_assert!(
+            buffer.capacity() > 0,
+            "Buffer pool returned zero-capacity buffer"
+        );
+        debug_assert!(
+            config.max_buffer_size >= config.read_buffer_size,
+            "max_buffer_size must be >= read_buffer_size"
+        );
         OptimizedConnectionHandler {
             stream,
             state,
@@ -104,7 +109,10 @@ impl OptimizedConnectionHandler {
                     }
                     Ok(n) => {
                         if self.buffer.len() + n > self.config.max_buffer_size {
-                            error!("Buffer overflow from {}, closing connection", self.client_addr);
+                            error!(
+                                "Buffer overflow from {}, closing connection",
+                                self.client_addr
+                            );
                             Self::encode_error_into("buffer overflow", &mut self.write_buffer);
                             let _ = self.stream.write_all(&self.write_buffer).await;
                             break;
@@ -135,7 +143,11 @@ impl OptimizedConnectionHandler {
 
                                 for response in &results {
                                     let success = !matches!(response, RespValue::Error(_));
-                                    self.metrics.record_command("GET", duration_ms / results.len() as f64, success);
+                                    self.metrics.record_command(
+                                        "GET",
+                                        duration_ms / results.len() as f64,
+                                        success,
+                                    );
                                     Self::encode_resp_into(response, &mut self.write_buffer);
                                 }
                                 commands_executed += get_count;
@@ -148,12 +160,17 @@ impl OptimizedConnectionHandler {
                                 if set_count >= batch_threshold {
                                     // Batch execute multiple SETs concurrently
                                     let start = Instant::now();
-                                    let results = self.state.fast_batch_set_pipeline(set_pairs).await;
+                                    let results =
+                                        self.state.fast_batch_set_pipeline(set_pairs).await;
                                     let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
 
                                     for response in &results {
                                         let success = !matches!(response, RespValue::Error(_));
-                                        self.metrics.record_command("SET", duration_ms / results.len() as f64, success);
+                                        self.metrics.record_command(
+                                            "SET",
+                                            duration_ms / results.len() as f64,
+                                            success,
+                                        );
                                         Self::encode_resp_into(response, &mut self.write_buffer);
                                     }
                                     commands_executed += set_count;
@@ -170,9 +187,15 @@ impl OptimizedConnectionHandler {
                                 }
                                 CommandResult::NeedMoreData => break,
                                 CommandResult::ParseError(e) => {
-                                    warn!("Parse error from {}: {}, draining buffer", self.client_addr, e);
+                                    warn!(
+                                        "Parse error from {}: {}, draining buffer",
+                                        self.client_addr, e
+                                    );
                                     self.buffer.clear();
-                                    Self::encode_error_into("protocol error", &mut self.write_buffer);
+                                    Self::encode_error_into(
+                                        "protocol error",
+                                        &mut self.write_buffer,
+                                    );
                                     had_parse_error = true;
                                     break;
                                 }
@@ -224,28 +247,26 @@ impl OptimizedConnectionHandler {
         }
 
         match RespCodec::parse(&mut self.buffer) {
-            Ok(Some(resp_value)) => {
-                match Command::from_resp_zero_copy(&resp_value) {
-                    Ok(cmd) => {
-                        let cmd_name = cmd.name();
-                        let start = Instant::now();
+            Ok(Some(resp_value)) => match Command::from_resp_zero_copy(&resp_value) {
+                Ok(cmd) => {
+                    let cmd_name = cmd.name();
+                    let start = Instant::now();
 
-                        let response = self.state.execute(&cmd).await;
+                    let response = self.state.execute(&cmd).await;
 
-                        let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
-                        let success = !matches!(&response, RespValue::Error(_));
-                        self.metrics.record_command(cmd_name, duration_ms, success);
+                    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let success = !matches!(&response, RespValue::Error(_));
+                    self.metrics.record_command(cmd_name, duration_ms, success);
 
-                        Self::encode_resp_into(&response, &mut self.write_buffer);
-                        CommandResult::Executed
-                    }
-                    Err(e) => {
-                        self.metrics.record_command("PARSE_ERROR", 0.0, false);
-                        Self::encode_error_into(&e, &mut self.write_buffer);
-                        CommandResult::Executed
-                    }
+                    Self::encode_resp_into(&response, &mut self.write_buffer);
+                    CommandResult::Executed
                 }
-            }
+                Err(e) => {
+                    self.metrics.record_command("PARSE_ERROR", 0.0, false);
+                    Self::encode_error_into(&e, &mut self.write_buffer);
+                    CommandResult::Executed
+                }
+            },
             Ok(None) => CommandResult::NeedMoreData,
             Err(e) => CommandResult::ParseError(e),
         }
@@ -269,7 +290,8 @@ impl OptimizedConnectionHandler {
             }
 
             // Check for GET command
-            if !buf.starts_with(b"*2\r\n$3\r\nGET\r\n") && !buf.starts_with(b"*2\r\n$3\r\nget\r\n") {
+            if !buf.starts_with(b"*2\r\n$3\r\nGET\r\n") && !buf.starts_with(b"*2\r\n$3\r\nget\r\n")
+            {
                 break; // Not a GET, stop collecting
             }
 
@@ -287,7 +309,11 @@ impl OptimizedConnectionHandler {
 
             // Parse key length
             let len_str = &after_header[1..len_end];
-            let Ok(key_len) = std::str::from_utf8(len_str).ok().and_then(|s| s.parse::<usize>().ok()).ok_or(()) else {
+            let Ok(key_len) = std::str::from_utf8(len_str)
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .ok_or(())
+            else {
                 break; // Invalid, stop
             };
 
@@ -329,7 +355,8 @@ impl OptimizedConnectionHandler {
             }
 
             // Check for SET command
-            if !buf.starts_with(b"*3\r\n$3\r\nSET\r\n") && !buf.starts_with(b"*3\r\n$3\r\nset\r\n") {
+            if !buf.starts_with(b"*3\r\n$3\r\nSET\r\n") && !buf.starts_with(b"*3\r\n$3\r\nset\r\n")
+            {
                 break; // Not a SET, stop collecting
             }
 
@@ -346,7 +373,11 @@ impl OptimizedConnectionHandler {
 
             // Parse key length
             let key_len_str = &after_header[1..key_len_crlf + 1];
-            let Ok(key_len) = std::str::from_utf8(key_len_str).ok().and_then(|s| s.parse::<usize>().ok()).ok_or(()) else {
+            let Ok(key_len) = std::str::from_utf8(key_len_str)
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .ok_or(())
+            else {
                 break; // Invalid, stop
             };
 
@@ -370,7 +401,11 @@ impl OptimizedConnectionHandler {
             };
 
             let val_len_str = &after_key[..val_len_crlf];
-            let Ok(val_len) = std::str::from_utf8(val_len_str).ok().and_then(|s| s.parse::<usize>().ok()).ok_or(()) else {
+            let Ok(val_len) = std::str::from_utf8(val_len_str)
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .ok_or(())
+            else {
                 break; // Invalid
             };
 
@@ -447,7 +482,11 @@ impl OptimizedConnectionHandler {
 
         // Parse key length
         let len_str = &after_header[1..len_end];
-        let Ok(key_len) = std::str::from_utf8(len_str).ok().and_then(|s| s.parse::<usize>().ok()).ok_or(()) else {
+        let Ok(key_len) = std::str::from_utf8(len_str)
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .ok_or(())
+        else {
             return FastPathResult::NotFastPath; // Invalid length
         };
 
@@ -499,7 +538,11 @@ impl OptimizedConnectionHandler {
         };
 
         let key_len_str = &after_header[1..key_len_crlf + 1];
-        let Ok(key_len) = std::str::from_utf8(key_len_str).ok().and_then(|s| s.parse::<usize>().ok()).ok_or(()) else {
+        let Ok(key_len) = std::str::from_utf8(key_len_str)
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .ok_or(())
+        else {
             return FastPathResult::NotFastPath;
         };
 
@@ -523,7 +566,11 @@ impl OptimizedConnectionHandler {
         };
 
         let val_len_str = &after_key[..val_len_crlf];
-        let Ok(val_len) = std::str::from_utf8(val_len_str).ok().and_then(|s| s.parse::<usize>().ok()).ok_or(()) else {
+        let Ok(val_len) = std::str::from_utf8(val_len_str)
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .ok_or(())
+        else {
             return FastPathResult::NotFastPath;
         };
 

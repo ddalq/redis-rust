@@ -134,7 +134,8 @@ impl HotKeyDetector {
         } else {
             // Only add new key if under limit
             if self.access_counts.len() < self.config.max_tracked_keys {
-                self.access_counts.insert(key.to_string(), AccessMetrics::new(now_ms, is_write));
+                self.access_counts
+                    .insert(key.to_string(), AccessMetrics::new(now_ms, is_write));
             }
         }
     }
@@ -164,7 +165,8 @@ impl HotKeyDetector {
 
     /// Get the top N hottest keys by access rate
     pub fn get_top_keys(&self, n: usize, now_ms: u64) -> Vec<(String, f64)> {
-        let mut rates: Vec<_> = self.access_counts
+        let mut rates: Vec<_> = self
+            .access_counts
             .iter()
             .map(|(key, metrics)| (key.clone(), metrics.access_rate(now_ms)))
             .collect();
@@ -182,9 +184,8 @@ impl HotKeyDetector {
     /// Remove stale entries outside the sliding window
     pub fn cleanup_stale(&mut self, now_ms: u64) {
         let window_start = now_ms.saturating_sub(self.config.window_ms);
-        self.access_counts.retain(|_, metrics| {
-            metrics.last_access_ms >= window_start
-        });
+        self.access_counts
+            .retain(|_, metrics| metrics.last_access_ms >= window_start);
     }
 
     /// Get the number of currently tracked keys

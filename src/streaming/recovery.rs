@@ -17,10 +17,10 @@
 //! All I/O through ObjectStore trait. Recovery is deterministic given
 //! the same object store state.
 
-use crate::replication::state::{ReplicationDelta, ReplicatedValue};
+use crate::replication::state::{ReplicatedValue, ReplicationDelta};
 use crate::streaming::{
-    Manifest, ManifestError, ManifestManager, ObjectStore, SegmentError, SegmentInfo,
-    SegmentReader, CheckpointReader, CheckpointError,
+    CheckpointError, CheckpointReader, Manifest, ManifestError, ManifestManager, ObjectStore,
+    SegmentError, SegmentInfo, SegmentReader,
 };
 use std::collections::HashMap;
 use std::io::Error as IoError;
@@ -173,24 +173,28 @@ impl<S: ObjectStore + Clone + 'static> RecoveryManager<S> {
         let mut stats = RecoveryStats::default();
 
         // Step 1: Load manifest
-        let manifest = self.manifest_manager.load_or_create(self.replica_id).await?;
+        let manifest = self
+            .manifest_manager
+            .load_or_create(self.replica_id)
+            .await?;
 
         // Step 2: Load checkpoint if available
-        let (checkpoint_state, last_checkpoint_segment) = if let Some(ref checkpoint_info) = manifest.checkpoint {
-            stats.used_checkpoint = true;
+        let (checkpoint_state, last_checkpoint_segment) =
+            if let Some(ref checkpoint_info) = manifest.checkpoint {
+                stats.used_checkpoint = true;
 
-            // Load checkpoint data from object store
-            let checkpoint_data = self.store.get(&checkpoint_info.key).await?;
-            stats.bytes_read += checkpoint_data.len() as u64;
+                // Load checkpoint data from object store
+                let checkpoint_data = self.store.get(&checkpoint_info.key).await?;
+                stats.bytes_read += checkpoint_data.len() as u64;
 
-            let reader = CheckpointReader::open(&checkpoint_data)?;
-            reader.validate()?;
+                let reader = CheckpointReader::open(&checkpoint_data)?;
+                reader.validate()?;
 
-            let data = reader.load()?;
-            (Some(data.state), checkpoint_info.last_segment_id)
-        } else {
-            (None, 0)
-        };
+                let data = reader.load()?;
+                (Some(data.state), checkpoint_info.last_segment_id)
+            } else {
+                (None, 0)
+            };
 
         // Step 3: Filter segments after checkpoint and sort
         let mut segments_to_load: Vec<&SegmentInfo> = if checkpoint_state.is_some() {
@@ -246,26 +250,30 @@ impl<S: ObjectStore + Clone + 'static> RecoveryManager<S> {
         progress.phase = RecoveryPhase::LoadingManifest;
         on_progress(&progress);
 
-        let manifest = self.manifest_manager.load_or_create(self.replica_id).await?;
+        let manifest = self
+            .manifest_manager
+            .load_or_create(self.replica_id)
+            .await?;
 
         // Step 2: Load checkpoint if available
-        let (checkpoint_state, last_checkpoint_segment) = if let Some(ref checkpoint_info) = manifest.checkpoint {
-            progress.phase = RecoveryPhase::LoadingCheckpoint;
-            on_progress(&progress);
-            stats.used_checkpoint = true;
+        let (checkpoint_state, last_checkpoint_segment) =
+            if let Some(ref checkpoint_info) = manifest.checkpoint {
+                progress.phase = RecoveryPhase::LoadingCheckpoint;
+                on_progress(&progress);
+                stats.used_checkpoint = true;
 
-            // Load checkpoint data from object store
-            let checkpoint_data = self.store.get(&checkpoint_info.key).await?;
-            stats.bytes_read += checkpoint_data.len() as u64;
+                // Load checkpoint data from object store
+                let checkpoint_data = self.store.get(&checkpoint_info.key).await?;
+                stats.bytes_read += checkpoint_data.len() as u64;
 
-            let reader = CheckpointReader::open(&checkpoint_data)?;
-            reader.validate()?;
+                let reader = CheckpointReader::open(&checkpoint_data)?;
+                reader.validate()?;
 
-            let data = reader.load()?;
-            (Some(data.state), checkpoint_info.last_segment_id)
-        } else {
-            (None, 0)
-        };
+                let data = reader.load()?;
+                (Some(data.state), checkpoint_info.last_segment_id)
+            } else {
+                (None, 0)
+            };
 
         // Step 3: Filter segments after checkpoint and sort
         let mut segments_to_load: Vec<&SegmentInfo> = if checkpoint_state.is_some() {

@@ -8,6 +8,7 @@
 //! - `LocalFsObjectStore`: For development and local testing
 //! - `S3ObjectStore`: For production (feature-gated)
 
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
@@ -15,7 +16,6 @@ use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 /// Metadata for a stored object
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -554,7 +554,10 @@ mod tests {
 
         let result = store.list("segments/", None).await.unwrap();
         assert_eq!(result.objects.len(), 2);
-        assert!(result.objects.iter().all(|o| o.key.starts_with("segments/")));
+        assert!(result
+            .objects
+            .iter()
+            .all(|o| o.key.starts_with("segments/")));
     }
 
     #[tokio::test]
@@ -602,7 +605,10 @@ mod tests {
 
         store.put("segments/seg-001.seg", b"data1").await.unwrap();
         store.put("segments/seg-002.seg", b"data2").await.unwrap();
-        store.put("checkpoints/chk-001.chk", b"data3").await.unwrap();
+        store
+            .put("checkpoints/chk-001.chk", b"data3")
+            .await
+            .unwrap();
 
         let result = store.list("segments/", None).await.unwrap();
         assert_eq!(result.objects.len(), 2);
@@ -616,7 +622,10 @@ mod tests {
         let store = LocalFsObjectStore::temp().unwrap();
 
         store.put("manifest.json.tmp", b"data").await.unwrap();
-        store.rename("manifest.json.tmp", "manifest.json").await.unwrap();
+        store
+            .rename("manifest.json.tmp", "manifest.json")
+            .await
+            .unwrap();
 
         assert!(!store.exists("manifest.json.tmp").await.unwrap());
         assert!(store.exists("manifest.json").await.unwrap());

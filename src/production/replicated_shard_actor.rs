@@ -12,10 +12,8 @@
 //! ```
 
 use crate::redis::{Command, CommandExecutor, RespValue};
-use crate::replication::{
-    ConsistencyLevel, ReplicaId, ReplicationDelta,
-};
 use crate::replication::state::ShardReplicaState;
+use crate::replication::{ConsistencyLevel, ReplicaId, ReplicationDelta};
 use crate::simulator::VirtualTime;
 use tokio::sync::{mpsc, oneshot};
 
@@ -33,9 +31,7 @@ pub enum ReplicatedShardMessage {
         response: oneshot::Sender<RespValue>,
     },
     /// Apply a remote delta from another replica
-    ApplyRemoteDelta {
-        delta: ReplicationDelta,
-    },
+    ApplyRemoteDelta { delta: ReplicationDelta },
     /// Drain all pending deltas for replication
     DrainPendingDeltas {
         response: oneshot::Sender<Vec<ReplicationDelta>>,
@@ -47,7 +43,9 @@ pub enum ReplicatedShardMessage {
     },
     /// Get snapshot of replicated keys for checkpointing
     GetSnapshot {
-        response: oneshot::Sender<std::collections::HashMap<String, crate::replication::state::ReplicatedValue>>,
+        response: oneshot::Sender<
+            std::collections::HashMap<String, crate::replication::state::ReplicatedValue>,
+        >,
     },
     /// Apply recovered state from persistence
     ApplyRecoveredState {
@@ -55,9 +53,7 @@ pub enum ReplicatedShardMessage {
         value: crate::replication::state::ReplicatedValue,
     },
     /// Graceful shutdown
-    Shutdown {
-        response: oneshot::Sender<()>,
-    },
+    Shutdown { response: oneshot::Sender<()> },
 }
 
 /// Handle for communicating with the ReplicatedShardActor
@@ -72,11 +68,18 @@ impl ReplicatedShardHandle {
     #[inline]
     pub async fn execute(&self, cmd: Command) -> (RespValue, Option<ReplicationDelta>) {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(ReplicatedShardMessage::Execute { cmd, response: tx }).is_err() {
+        if self
+            .tx
+            .send(ReplicatedShardMessage::Execute { cmd, response: tx })
+            .is_err()
+        {
             return (RespValue::Error("ERR shard unavailable".to_string()), None);
         }
         rx.await.unwrap_or_else(|_| {
-            (RespValue::Error("ERR shard response failed".to_string()), None)
+            (
+                RespValue::Error("ERR shard response failed".to_string()),
+                None,
+            )
         })
     }
 
@@ -84,24 +87,33 @@ impl ReplicatedShardHandle {
     #[inline]
     pub async fn execute_readonly(&self, cmd: Command) -> RespValue {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(ReplicatedShardMessage::ExecuteReadonly { cmd, response: tx }).is_err() {
+        if self
+            .tx
+            .send(ReplicatedShardMessage::ExecuteReadonly { cmd, response: tx })
+            .is_err()
+        {
             return RespValue::Error("ERR shard unavailable".to_string());
         }
-        rx.await.unwrap_or_else(|_| {
-            RespValue::Error("ERR shard response failed".to_string())
-        })
+        rx.await
+            .unwrap_or_else(|_| RespValue::Error("ERR shard response failed".to_string()))
     }
 
     /// Apply a remote delta (fire-and-forget)
     #[inline]
     pub fn apply_remote_delta(&self, delta: ReplicationDelta) {
-        let _ = self.tx.send(ReplicatedShardMessage::ApplyRemoteDelta { delta });
+        let _ = self
+            .tx
+            .send(ReplicatedShardMessage::ApplyRemoteDelta { delta });
     }
 
     /// Drain pending deltas for replication
     pub async fn drain_pending_deltas(&self) -> Vec<ReplicationDelta> {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(ReplicatedShardMessage::DrainPendingDeltas { response: tx }).is_err() {
+        if self
+            .tx
+            .send(ReplicatedShardMessage::DrainPendingDeltas { response: tx })
+            .is_err()
+        {
             return Vec::new();
         }
         rx.await.unwrap_or_default()
@@ -110,30 +122,53 @@ impl ReplicatedShardHandle {
     /// Evict expired keys
     pub async fn evict_expired(&self, current_time: VirtualTime) -> usize {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(ReplicatedShardMessage::EvictExpired { current_time, response: tx }).is_err() {
+        if self
+            .tx
+            .send(ReplicatedShardMessage::EvictExpired {
+                current_time,
+                response: tx,
+            })
+            .is_err()
+        {
             return 0;
         }
         rx.await.unwrap_or(0)
     }
 
     /// Get snapshot for checkpointing
-    pub async fn get_snapshot(&self) -> std::collections::HashMap<String, crate::replication::state::ReplicatedValue> {
+    pub async fn get_snapshot(
+        &self,
+    ) -> std::collections::HashMap<String, crate::replication::state::ReplicatedValue> {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(ReplicatedShardMessage::GetSnapshot { response: tx }).is_err() {
+        if self
+            .tx
+            .send(ReplicatedShardMessage::GetSnapshot { response: tx })
+            .is_err()
+        {
             return std::collections::HashMap::new();
         }
         rx.await.unwrap_or_default()
     }
 
     /// Apply recovered state (fire-and-forget)
-    pub fn apply_recovered_state(&self, key: String, value: crate::replication::state::ReplicatedValue) {
-        let _ = self.tx.send(ReplicatedShardMessage::ApplyRecoveredState { key, value });
+    pub fn apply_recovered_state(
+        &self,
+        key: String,
+        value: crate::replication::state::ReplicatedValue,
+    ) {
+        let _ = self
+            .tx
+            .send(ReplicatedShardMessage::ApplyRecoveredState { key, value });
     }
 
     /// Graceful shutdown
     pub async fn shutdown(&self) {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(ReplicatedShardMessage::Shutdown { response: tx }).is_ok() {
+        if self
+            .tx
+            .send(ReplicatedShardMessage::Shutdown { response: tx })
+            .is_ok()
+        {
             let _ = rx.await;
         }
     }
@@ -207,7 +242,10 @@ impl ReplicatedShardActor {
                     let _ = response.send(deltas);
                 }
 
-                ReplicatedShardMessage::EvictExpired { current_time, response } => {
+                ReplicatedShardMessage::EvictExpired {
+                    current_time,
+                    response,
+                } => {
                     let evicted = self.executor.evict_expired_direct(current_time);
                     let _ = response.send(evicted);
                 }
@@ -219,15 +257,19 @@ impl ReplicatedShardActor {
 
                 ReplicatedShardMessage::ApplyRecoveredState { key, value } => {
                     // Insert into replica state
-                    self.replica_state.replicated_keys.insert(key.clone(), value.clone());
+                    self.replica_state
+                        .replicated_keys
+                        .insert(key.clone(), value.clone());
 
                     // Also apply to executor for command execution
                     if value.is_hash() {
                         // Recover hash data
                         if let Some(hash) = value.get_hash() {
-                            let pairs: Vec<(crate::redis::SDS, crate::redis::SDS)> = hash.iter()
+                            let pairs: Vec<(crate::redis::SDS, crate::redis::SDS)> = hash
+                                .iter()
                                 .filter_map(|(field, lww)| {
-                                    lww.get().map(|v| (crate::redis::SDS::from_str(field), v.clone()))
+                                    lww.get()
+                                        .map(|v| (crate::redis::SDS::from_str(field), v.clone()))
                                 })
                                 .collect();
                             if !pairs.is_empty() {
@@ -258,7 +300,15 @@ impl ReplicatedShardActor {
     /// Record mutation after command execution
     fn record_mutation_post_execute(&mut self, cmd: &Command) -> Option<ReplicationDelta> {
         match cmd {
-            Command::Set { key, value, ex, px, nx, xx, .. } => {
+            Command::Set {
+                key,
+                value,
+                ex,
+                px,
+                nx,
+                xx,
+                ..
+            } => {
                 // Calculate expiry in milliseconds
                 let expiry_ms = match (ex, px) {
                     (Some(seconds), _) => Some(*seconds as u64 * 1000),
@@ -270,7 +320,11 @@ impl ReplicatedShardActor {
                 if *nx {
                     if let Some(v) = self.executor.get_data().get(key) {
                         if v.as_string().is_some() {
-                            return Some(self.replica_state.record_write(key.clone(), value.clone(), expiry_ms));
+                            return Some(self.replica_state.record_write(
+                                key.clone(),
+                                value.clone(),
+                                expiry_ms,
+                            ));
                         }
                     }
                     return None;
@@ -283,7 +337,10 @@ impl ReplicatedShardActor {
                     }
                 }
 
-                Some(self.replica_state.record_write(key.clone(), value.clone(), expiry_ms))
+                Some(
+                    self.replica_state
+                        .record_write(key.clone(), value.clone(), expiry_ms),
+                )
             }
             Command::Del(keys) => {
                 // Record deletion for each key
@@ -293,12 +350,19 @@ impl ReplicatedShardActor {
                 }
                 result
             }
-            Command::Incr(key) | Command::Decr(key) |
-            Command::IncrBy(key, _) | Command::DecrBy(key, _) |
-            Command::Append(key, _) | Command::GetSet(key, _) => {
+            Command::Incr(key)
+            | Command::Decr(key)
+            | Command::IncrBy(key, _)
+            | Command::DecrBy(key, _)
+            | Command::Append(key, _)
+            | Command::GetSet(key, _) => {
                 if let Some(value) = self.executor.get_data().get(key) {
                     if let Some(sds) = value.as_string() {
-                        return Some(self.replica_state.record_write(key.clone(), sds.clone(), None));
+                        return Some(self.replica_state.record_write(
+                            key.clone(),
+                            sds.clone(),
+                            None,
+                        ));
                     }
                 }
                 None
@@ -307,9 +371,13 @@ impl ReplicatedShardActor {
             Command::HSet(key, pairs) => {
                 // TigerStyle: Preconditions
                 debug_assert!(!key.is_empty(), "Precondition: HSet key must not be empty");
-                debug_assert!(!pairs.is_empty(), "Precondition: HSet pairs must not be empty");
+                debug_assert!(
+                    !pairs.is_empty(),
+                    "Precondition: HSet pairs must not be empty"
+                );
 
-                let fields: Vec<(String, crate::redis::SDS)> = pairs.iter()
+                let fields: Vec<(String, crate::redis::SDS)> = pairs
+                    .iter()
                     .map(|(f, v)| (f.to_string(), v.clone()))
                     .collect();
                 let delta = self.replica_state.record_hash_write(key.clone(), fields);
@@ -317,11 +385,18 @@ impl ReplicatedShardActor {
                 // TigerStyle: Postconditions
                 #[cfg(debug_assertions)]
                 {
-                    debug_assert!(self.replica_state.replicated_keys.contains_key(key),
-                        "Postcondition: key must exist in replicated_keys after HSet");
-                    debug_assert!(self.replica_state.replicated_keys.get(key)
-                        .map(|v| v.is_hash()).unwrap_or(false),
-                        "Postcondition: value must be hash type after HSet");
+                    debug_assert!(
+                        self.replica_state.replicated_keys.contains_key(key),
+                        "Postcondition: key must exist in replicated_keys after HSet"
+                    );
+                    debug_assert!(
+                        self.replica_state
+                            .replicated_keys
+                            .get(key)
+                            .map(|v| v.is_hash())
+                            .unwrap_or(false),
+                        "Postcondition: value must be hash type after HSet"
+                    );
                 }
 
                 Some(delta)
@@ -329,34 +404,42 @@ impl ReplicatedShardActor {
             Command::HDel(key, fields) => {
                 // TigerStyle: Preconditions
                 debug_assert!(!key.is_empty(), "Precondition: HDel key must not be empty");
-                debug_assert!(!fields.is_empty(), "Precondition: HDel fields must not be empty");
+                debug_assert!(
+                    !fields.is_empty(),
+                    "Precondition: HDel fields must not be empty"
+                );
 
-                let field_names: Vec<String> = fields.iter()
-                    .map(|f| f.to_string())
-                    .collect();
-                self.replica_state.record_hash_delete(key.clone(), field_names)
+                let field_names: Vec<String> = fields.iter().map(|f| f.to_string()).collect();
+                self.replica_state
+                    .record_hash_delete(key.clone(), field_names)
             }
             Command::HIncrBy(key, field, _) => {
                 // TigerStyle: Preconditions
-                debug_assert!(!key.is_empty(), "Precondition: HIncrBy key must not be empty");
-                debug_assert!(!field.is_empty(), "Precondition: HIncrBy field must not be empty");
+                debug_assert!(
+                    !key.is_empty(),
+                    "Precondition: HIncrBy key must not be empty"
+                );
+                debug_assert!(
+                    !field.is_empty(),
+                    "Precondition: HIncrBy field must not be empty"
+                );
 
                 // After HIncrBy, read the resulting hash value and record it
                 if let Some(value) = self.executor.get_data().get(key) {
                     if let Some(hash) = value.as_hash() {
-                        if let Some(field_value) = hash.get(&crate::redis::SDS::from_str(&field.to_string())) {
+                        if let Some(field_value) =
+                            hash.get(&crate::redis::SDS::from_str(&field.to_string()))
+                        {
                             return Some(self.replica_state.record_hash_write(
                                 key.clone(),
-                                vec![(field.to_string(), field_value.clone())]
+                                vec![(field.to_string(), field_value.clone())],
                             ));
                         }
                     }
                 }
                 None
             }
-            Command::FlushDb | Command::FlushAll => {
-                None
-            }
+            Command::FlushDb | Command::FlushAll => None,
             _ => None,
         }
     }
@@ -365,7 +448,10 @@ impl ReplicatedShardActor {
     /// TigerStyle: Applies remote delta and syncs executor state
     fn apply_remote_delta_impl(&mut self, delta: ReplicationDelta) {
         // TigerStyle: Preconditions
-        debug_assert!(!delta.key.is_empty(), "Precondition: delta key must not be empty");
+        debug_assert!(
+            !delta.key.is_empty(),
+            "Precondition: delta key must not be empty"
+        );
 
         self.replica_state.apply_remote_delta(delta.clone());
 
@@ -373,15 +459,19 @@ impl ReplicatedShardActor {
             // TigerStyle: Postcondition - replica_state should have the hash
             #[cfg(debug_assertions)]
             {
-                debug_assert!(self.replica_state.replicated_keys.contains_key(&delta.key),
-                    "Postcondition: key must exist after applying hash delta");
+                debug_assert!(
+                    self.replica_state.replicated_keys.contains_key(&delta.key),
+                    "Postcondition: key must exist after applying hash delta"
+                );
             }
 
             // Apply hash delta
             if let Some(hash) = delta.value.get_hash() {
-                let pairs: Vec<(crate::redis::SDS, crate::redis::SDS)> = hash.iter()
+                let pairs: Vec<(crate::redis::SDS, crate::redis::SDS)> = hash
+                    .iter()
                     .filter_map(|(field, lww)| {
-                        lww.get().map(|v| (crate::redis::SDS::from_str(field), v.clone()))
+                        lww.get()
+                            .map(|v| (crate::redis::SDS::from_str(field), v.clone()))
                     })
                     .collect();
                 if !pairs.is_empty() {
@@ -392,13 +482,16 @@ impl ReplicatedShardActor {
                     #[cfg(debug_assertions)]
                     {
                         if let Some(executor_value) = self.executor.get_data().get(&delta.key) {
-                            debug_assert!(executor_value.as_hash().is_some(),
-                                "Postcondition: executor must have hash after HSet");
+                            debug_assert!(
+                                executor_value.as_hash().is_some(),
+                                "Postcondition: executor must have hash after HSet"
+                            );
                         }
                     }
                 }
                 // Handle tombstoned fields by deleting them
-                let tombstones: Vec<crate::redis::SDS> = hash.iter()
+                let tombstones: Vec<crate::redis::SDS> = hash
+                    .iter()
                     .filter(|(_, lww)| lww.tombstone)
                     .map(|(field, _)| crate::redis::SDS::from_str(field))
                     .collect();
@@ -455,23 +548,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_replicated_shard_actor_basic() {
-        let handle = ReplicatedShardActor::spawn(
-            ReplicaId::new(1),
-            ConsistencyLevel::Eventual,
-            0,
-        );
+        let handle = ReplicatedShardActor::spawn(ReplicaId::new(1), ConsistencyLevel::Eventual, 0);
 
         // Execute SET
-        let (result, delta) = handle.execute(Command::set(
-            "key1".to_string(),
-            crate::redis::SDS::from_str("value1"),
-        )).await;
+        let (result, delta) = handle
+            .execute(Command::set(
+                "key1".to_string(),
+                crate::redis::SDS::from_str("value1"),
+            ))
+            .await;
 
         assert!(matches!(result, RespValue::SimpleString(_)));
         assert!(delta.is_some());
 
         // Execute GET
-        let result = handle.execute_readonly(Command::Get("key1".to_string())).await;
+        let result = handle
+            .execute_readonly(Command::Get("key1".to_string()))
+            .await;
         assert!(matches!(result, RespValue::BulkString(Some(_))));
 
         handle.shutdown().await;
@@ -479,15 +572,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_replicated_shard_actor_drain_deltas() {
-        let handle = ReplicatedShardActor::spawn(
-            ReplicaId::new(1),
-            ConsistencyLevel::Eventual,
-            0,
-        );
+        let handle = ReplicatedShardActor::spawn(ReplicaId::new(1), ConsistencyLevel::Eventual, 0);
 
         // Execute some writes
-        handle.execute(Command::set("k1".to_string(), crate::redis::SDS::from_str("v1"))).await;
-        handle.execute(Command::set("k2".to_string(), crate::redis::SDS::from_str("v2"))).await;
+        handle
+            .execute(Command::set(
+                "k1".to_string(),
+                crate::redis::SDS::from_str("v1"),
+            ))
+            .await;
+        handle
+            .execute(Command::set(
+                "k2".to_string(),
+                crate::redis::SDS::from_str("v2"),
+            ))
+            .await;
 
         // Drain deltas
         let deltas = handle.drain_pending_deltas().await;
@@ -502,11 +601,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_replicated_shard_actor_apply_remote_delta() {
-        let handle = ReplicatedShardActor::spawn(
-            ReplicaId::new(1),
-            ConsistencyLevel::Eventual,
-            0,
-        );
+        let handle = ReplicatedShardActor::spawn(ReplicaId::new(1), ConsistencyLevel::Eventual, 0);
 
         // Create a delta as if from another replica
         let remote_replica = ReplicaId::new(2);
@@ -528,7 +623,9 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify it's there
-        let result = handle.execute_readonly(Command::Get("remote_key".to_string())).await;
+        let result = handle
+            .execute_readonly(Command::Get("remote_key".to_string()))
+            .await;
         assert!(matches!(result, RespValue::BulkString(Some(_))));
 
         handle.shutdown().await;
@@ -536,15 +633,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_replicated_shard_actor_snapshot() {
-        let handle = ReplicatedShardActor::spawn(
-            ReplicaId::new(1),
-            ConsistencyLevel::Eventual,
-            0,
-        );
+        let handle = ReplicatedShardActor::spawn(ReplicaId::new(1), ConsistencyLevel::Eventual, 0);
 
         // Execute some writes
-        handle.execute(Command::set("k1".to_string(), crate::redis::SDS::from_str("v1"))).await;
-        handle.execute(Command::set("k2".to_string(), crate::redis::SDS::from_str("v2"))).await;
+        handle
+            .execute(Command::set(
+                "k1".to_string(),
+                crate::redis::SDS::from_str("v1"),
+            ))
+            .await;
+        handle
+            .execute(Command::set(
+                "k2".to_string(),
+                crate::redis::SDS::from_str("v2"),
+            ))
+            .await;
 
         // Get snapshot
         let snapshot = handle.get_snapshot().await;
@@ -557,11 +660,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_replicated_shard_actor_shutdown() {
-        let handle = ReplicatedShardActor::spawn(
-            ReplicaId::new(1),
-            ConsistencyLevel::Eventual,
-            0,
-        );
+        let handle = ReplicatedShardActor::spawn(ReplicaId::new(1), ConsistencyLevel::Eventual, 0);
 
         assert!(handle.is_running());
         handle.shutdown().await;

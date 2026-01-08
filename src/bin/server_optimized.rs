@@ -25,8 +25,8 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+use redis_sim::observability::{init_tracing, shutdown, DatadogConfig};
 use redis_sim::production::OptimizedRedisServer;
-use redis_sim::observability::{DatadogConfig, init_tracing, shutdown};
 
 const DEFAULT_PORT: u16 = 6379;
 

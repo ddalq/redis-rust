@@ -64,13 +64,27 @@ pub struct BatchingConfig {
 }
 
 // Default value functions for serde
-fn default_num_shards() -> usize { 16 }
-fn default_pool_capacity() -> usize { 256 }
-fn default_pool_prewarm() -> usize { 64 }
-fn default_read_buffer() -> usize { 8192 }
-fn default_max_buffer() -> usize { 1024 * 1024 } // 1MB
-fn default_min_pipeline_buffer() -> usize { 60 }
-fn default_batch_threshold() -> usize { 2 }
+fn default_num_shards() -> usize {
+    16
+}
+fn default_pool_capacity() -> usize {
+    256
+}
+fn default_pool_prewarm() -> usize {
+    64
+}
+fn default_read_buffer() -> usize {
+    8192
+}
+fn default_max_buffer() -> usize {
+    1024 * 1024
+} // 1MB
+fn default_min_pipeline_buffer() -> usize {
+    60
+}
+fn default_batch_threshold() -> usize {
+    2
+}
 
 impl Default for PerformanceConfig {
     fn default() -> Self {
@@ -123,18 +137,16 @@ impl PerformanceConfig {
         }
 
         match std::fs::read_to_string(path) {
-            Ok(contents) => {
-                match toml::from_str(&contents) {
-                    Ok(config) => {
-                        tracing::info!("Loaded performance config from {:?}", path);
-                        config
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse config {:?}: {}, using defaults", path, e);
-                        Self::default()
-                    }
+            Ok(contents) => match toml::from_str(&contents) {
+                Ok(config) => {
+                    tracing::info!("Loaded performance config from {:?}", path);
+                    config
                 }
-            }
+                Err(e) => {
+                    tracing::warn!("Failed to parse config {:?}: {}, using defaults", path, e);
+                    Self::default()
+                }
+            },
             Err(e) => {
                 tracing::warn!("Failed to read config {:?}: {}, using defaults", path, e);
                 Self::default()
@@ -145,8 +157,8 @@ impl PerformanceConfig {
     /// Load configuration from environment variable PERF_CONFIG_PATH
     /// or fall back to default path "perf_config.toml"
     pub fn from_env() -> Self {
-        let path = std::env::var("PERF_CONFIG_PATH")
-            .unwrap_or_else(|_| "perf_config.toml".to_string());
+        let path =
+            std::env::var("PERF_CONFIG_PATH").unwrap_or_else(|_| "perf_config.toml".to_string());
         Self::from_file(&path)
     }
 
@@ -157,7 +169,10 @@ impl PerformanceConfig {
             return Err(format!("num_shards must be 1-256, got {}", self.num_shards));
         }
         if !self.num_shards.is_power_of_two() {
-            return Err(format!("num_shards must be power of 2, got {}", self.num_shards));
+            return Err(format!(
+                "num_shards must be power of 2, got {}",
+                self.num_shards
+            ));
         }
         if self.response_pool.capacity == 0 {
             return Err("response_pool.capacity must be > 0".to_string());

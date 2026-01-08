@@ -16,9 +16,9 @@
 
 use super::lattice::ReplicaId;
 use super::state::{ReplicatedValue, ReplicationDelta};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 /// Configuration for anti-entropy protocol
 #[derive(Debug, Clone)]
@@ -301,10 +301,7 @@ impl AntiEntropyManager {
     }
 
     /// Generate our current state digest
-    pub fn generate_digest(
-        &self,
-        keys: &HashMap<String, ReplicatedValue>,
-    ) -> StateDigest {
+    pub fn generate_digest(&self, keys: &HashMap<String, ReplicatedValue>) -> StateDigest {
         StateDigest::from_state(
             keys,
             self.replica_id,
@@ -370,30 +367,29 @@ impl AntiEntropyManager {
         let depth = self.config.merkle_tree_depth;
 
         // Determine which keys to send
-        let keys_to_send: Vec<(&String, &ReplicatedValue)> = if let Some(ref buckets) = request.requested_buckets {
-            // Only send keys in requested buckets
-            our_keys
-                .iter()
-                .filter(|(key, value)| {
-                    let digest = KeyDigest::new(key, value);
-                    buckets.contains(&digest.bucket(depth))
-                })
-                .take(self.config.max_keys_per_sync)
-                .collect()
-        } else {
-            // Send all keys (up to limit)
-            our_keys
-                .iter()
-                .take(self.config.max_keys_per_sync)
-                .collect()
-        };
+        let keys_to_send: Vec<(&String, &ReplicatedValue)> =
+            if let Some(ref buckets) = request.requested_buckets {
+                // Only send keys in requested buckets
+                our_keys
+                    .iter()
+                    .filter(|(key, value)| {
+                        let digest = KeyDigest::new(key, value);
+                        buckets.contains(&digest.bucket(depth))
+                    })
+                    .take(self.config.max_keys_per_sync)
+                    .collect()
+            } else {
+                // Send all keys (up to limit)
+                our_keys
+                    .iter()
+                    .take(self.config.max_keys_per_sync)
+                    .collect()
+            };
 
         // Create deltas
         let deltas: Vec<ReplicationDelta> = keys_to_send
             .into_iter()
-            .map(|(key, value)| {
-                ReplicationDelta::new(key.clone(), value.clone(), self.replica_id)
-            })
+            .map(|(key, value)| ReplicationDelta::new(key.clone(), value.clone(), self.replica_id))
             .collect();
 
         // Update our knowledge of peer
@@ -420,9 +416,7 @@ impl AntiEntropyManager {
                 buckets.contains(&digest.bucket(depth))
             })
             .take(self.config.max_keys_per_sync)
-            .map(|(key, value)| {
-                ReplicationDelta::new(key.clone(), value.clone(), self.replica_id)
-            })
+            .map(|(key, value)| ReplicationDelta::new(key.clone(), value.clone(), self.replica_id))
             .collect()
     }
 
@@ -474,12 +468,15 @@ pub enum AntiEntropyMessage {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::lattice::LamportClock;
+    use super::*;
     use crate::redis::SDS;
 
     fn make_value(s: &str, timestamp: u64, replica: ReplicaId) -> ReplicatedValue {
-        let clock = LamportClock { time: timestamp, replica_id: replica };
+        let clock = LamportClock {
+            time: timestamp,
+            replica_id: replica,
+        };
         ReplicatedValue::with_value(SDS::from_str(s), clock)
     }
 

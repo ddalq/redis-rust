@@ -5,9 +5,9 @@
 //! after network partitions and message drops.
 
 use redis_sim::replication::crdt_dst::{
-    run_gcounter_batch, run_pncounter_batch, run_orset_batch, run_vectorclock_batch,
-    summarize_batch, CRDTDSTConfig,
-    GCounterDSTHarness, PNCounterDSTHarness, ORSetDSTHarness, VectorClockDSTHarness,
+    run_gcounter_batch, run_orset_batch, run_pncounter_batch, run_vectorclock_batch,
+    summarize_batch, CRDTDSTConfig, GCounterDSTHarness, ORSetDSTHarness, PNCounterDSTHarness,
+    VectorClockDSTHarness,
 };
 
 // =============================================================================
@@ -175,7 +175,11 @@ fn test_gcounter_50_seeds_chaos() {
 
     // Chaos has high message drop - still should converge after full sync
     let passed = results.iter().filter(|r| r.is_success()).count();
-    assert!(passed >= 40, "At least 80% should converge in chaos: {}/50", passed);
+    assert!(
+        passed >= 40,
+        "At least 80% should converge in chaos: {}/50",
+        passed
+    );
 }
 
 #[test]
@@ -185,7 +189,11 @@ fn test_orset_50_seeds_chaos() {
     println!("ORSet 50 Seeds Chaos:\n{}", summary);
 
     let passed = results.iter().filter(|r| r.is_success()).count();
-    assert!(passed >= 40, "At least 80% should converge in chaos: {}/50", passed);
+    assert!(
+        passed >= 40,
+        "At least 80% should converge in chaos: {}/50",
+        passed
+    );
 }
 
 // =============================================================================
@@ -231,7 +239,10 @@ fn test_crdt_dst_determinism_all_types() {
     h2.run(50);
     let ops2 = h2.result().total_operations;
 
-    assert_eq!(ops1, ops2, "GCounter: Same seed should produce same results");
+    assert_eq!(
+        ops1, ops2,
+        "GCounter: Same seed should produce same results"
+    );
 
     // PNCounter
     let mut h1 = PNCounterDSTHarness::new(CRDTDSTConfig::calm(seed));
@@ -242,7 +253,10 @@ fn test_crdt_dst_determinism_all_types() {
     h2.run(50);
     let ops2 = h2.result().total_operations;
 
-    assert_eq!(ops1, ops2, "PNCounter: Same seed should produce same results");
+    assert_eq!(
+        ops1, ops2,
+        "PNCounter: Same seed should produce same results"
+    );
 
     // ORSet
     let mut h1 = ORSetDSTHarness::new(CRDTDSTConfig::calm(seed));

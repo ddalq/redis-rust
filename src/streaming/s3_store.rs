@@ -52,14 +52,10 @@ impl S3ObjectStore {
         }
 
         // Try to get credentials from environment
-        builder = builder.with_access_key_id(
-            std::env::var("AWS_ACCESS_KEY_ID")
-                .unwrap_or_default(),
-        );
-        builder = builder.with_secret_access_key(
-            std::env::var("AWS_SECRET_ACCESS_KEY")
-                .unwrap_or_default(),
-        );
+        builder =
+            builder.with_access_key_id(std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_default());
+        builder = builder
+            .with_secret_access_key(std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_default());
 
         let store = builder.build().map_err(|e| {
             IoError::new(
@@ -195,18 +191,13 @@ impl ObjectStore for S3ObjectStore {
             let full_prefix = self.full_path(prefix);
 
             // Parse offset from continuation token
-            let offset: usize = continuation_token
-                .and_then(|t| t.parse().ok())
-                .unwrap_or(0);
+            let offset: usize = continuation_token.and_then(|t| t.parse().ok()).unwrap_or(0);
 
             // List all objects with prefix
             let mut objects = Vec::new();
             let list_stream = self.store.list(Some(&full_prefix));
 
-            let all_objects: Vec<_> = list_stream
-                .try_collect()
-                .await
-                .map_err(Self::map_error)?;
+            let all_objects: Vec<_> = list_stream.try_collect().await.map_err(Self::map_error)?;
 
             // Apply pagination
             const PAGE_SIZE: usize = 1000;

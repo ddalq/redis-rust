@@ -207,21 +207,19 @@ impl<'a> QueryExecutor<'a> {
                 let card = self.state.get_set_cardinality(key);
                 QueryValue::Cardinality(card)
             }
-            MetricType::Distribution => {
-                match self.state.get_distribution(key) {
-                    Some(dist) => QueryValue::Distribution {
-                        count: dist.count,
-                        sum: dist.sum,
-                        avg: dist.avg(),
-                        min: dist.min,
-                        max: dist.max,
-                        p50: dist.p50(),
-                        p90: dist.p90(),
-                        p99: dist.p99(),
-                    },
-                    None => QueryValue::None,
-                }
-            }
+            MetricType::Distribution => match self.state.get_distribution(key) {
+                Some(dist) => QueryValue::Distribution {
+                    count: dist.count,
+                    sum: dist.sum,
+                    avg: dist.avg(),
+                    min: dist.min,
+                    max: dist.max,
+                    p50: dist.p50(),
+                    p90: dist.p90(),
+                    p99: dist.p99(),
+                },
+                None => QueryValue::None,
+            },
         }
     }
 

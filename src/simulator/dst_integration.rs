@@ -4,8 +4,7 @@
 //! fault injection, crash/recovery, and linearizability checking.
 
 use super::dst::{
-    DSTConfig, DSTSimulation, OperationResult, OperationType, RecordedOperation,
-    SimulationResult,
+    DSTConfig, DSTSimulation, OperationResult, OperationType, RecordedOperation, SimulationResult,
 };
 use super::VirtualTime;
 use crate::buggify::{self, FaultConfig};
@@ -66,9 +65,10 @@ impl ZipfianGenerator {
         let u = rng.gen_range(0, 1_000_000) as f64 / 1_000_000.0;
 
         // Binary search for the key
-        match self.cumulative.binary_search_by(|c| {
-            c.partial_cmp(&u).unwrap_or(std::cmp::Ordering::Equal)
-        }) {
+        match self
+            .cumulative
+            .binary_search_by(|c| c.partial_cmp(&u).unwrap_or(std::cmp::Ordering::Equal))
+        {
             Ok(idx) => idx as u64,
             Err(idx) => idx.min(self.num_keys as usize - 1) as u64,
         }
@@ -123,7 +123,8 @@ impl SimulatedNode {
         let sds = SDS::from_str(value);
         let cmd = Command::set(key.to_string(), sds);
         self.executor.execute(&cmd);
-        self.pending_writes.push((key.to_string(), value.to_string()));
+        self.pending_writes
+            .push((key.to_string(), value.to_string()));
     }
 
     fn clear_pending(&mut self) {
@@ -638,8 +639,7 @@ mod tests {
         buggify::reset_stats();
 
         // Run with Zipfian (default)
-        let mut sim_zipf =
-            RedisDSTSimulation::new(42, 3).with_faults(FaultConfig::calm());
+        let mut sim_zipf = RedisDSTSimulation::new(42, 3).with_faults(FaultConfig::calm());
         sim_zipf.run(200);
         let stats_zipf = sim_zipf.stats();
 

@@ -146,7 +146,9 @@ impl<T> ResponsePool<T> {
     /// Returns a pooled slot if available, otherwise creates a new one.
     #[inline]
     pub fn acquire(&self) -> Arc<ResponseSlot<T>> {
-        self.pool.pop().unwrap_or_else(|| Arc::new(ResponseSlot::new()))
+        self.pool
+            .pop()
+            .unwrap_or_else(|| Arc::new(ResponseSlot::new()))
     }
 
     /// Release a slot back to the pool

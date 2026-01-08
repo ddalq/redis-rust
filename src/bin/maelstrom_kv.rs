@@ -50,16 +50,16 @@ struct ResponseBody {
 fn main() -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
-    
+
     let mut executor = CommandExecutor::new();
     let mut msg_counter: u64 = 0;
-    
+
     for line in stdin.lock().lines() {
         let line = line?;
         if line.is_empty() {
             continue;
         }
-        
+
         let msg: Message = match serde_json::from_str(&line) {
             Ok(m) => m,
             Err(e) => {
@@ -67,29 +67,27 @@ fn main() -> io::Result<()> {
                 continue;
             }
         };
-        
+
         msg_counter += 1;
-        
+
         let response = match msg.body.msg_type.as_str() {
-            "init" => {
-                Response {
-                    src: msg.dest.clone(),
-                    dest: msg.src.clone(),
-                    body: ResponseBody {
-                        msg_type: "init_ok".to_string(),
-                        msg_id: Some(msg_counter),
-                        in_reply_to: msg.body.msg_id,
-                        value: None,
-                        code: None,
-                        text: None,
-                    },
-                }
-            }
+            "init" => Response {
+                src: msg.dest.clone(),
+                dest: msg.src.clone(),
+                body: ResponseBody {
+                    msg_type: "init_ok".to_string(),
+                    msg_id: Some(msg_counter),
+                    in_reply_to: msg.body.msg_id,
+                    value: None,
+                    code: None,
+                    text: None,
+                },
+            },
             "read" => {
                 let key = value_to_string(&msg.body.key);
                 let cmd = Command::Get(key);
                 let result = executor.execute(&cmd);
-                
+
                 match result {
                     RespValue::BulkString(Some(data)) => {
                         let value_str = String::from_utf8_lossy(&data);
@@ -108,34 +106,30 @@ fn main() -> io::Result<()> {
                             },
                         }
                     }
-                    RespValue::BulkString(None) => {
-                        Response {
-                            src: msg.dest.clone(),
-                            dest: msg.src.clone(),
-                            body: ResponseBody {
-                                msg_type: "error".to_string(),
-                                msg_id: Some(msg_counter),
-                                in_reply_to: msg.body.msg_id,
-                                value: None,
-                                code: Some(20),
-                                text: Some("key does not exist".to_string()),
-                            },
-                        }
-                    }
-                    _ => {
-                        Response {
-                            src: msg.dest.clone(),
-                            dest: msg.src.clone(),
-                            body: ResponseBody {
-                                msg_type: "error".to_string(),
-                                msg_id: Some(msg_counter),
-                                in_reply_to: msg.body.msg_id,
-                                value: None,
-                                code: Some(13),
-                                text: Some("internal error".to_string()),
-                            },
-                        }
-                    }
+                    RespValue::BulkString(None) => Response {
+                        src: msg.dest.clone(),
+                        dest: msg.src.clone(),
+                        body: ResponseBody {
+                            msg_type: "error".to_string(),
+                            msg_id: Some(msg_counter),
+                            in_reply_to: msg.body.msg_id,
+                            value: None,
+                            code: Some(20),
+                            text: Some("key does not exist".to_string()),
+                        },
+                    },
+                    _ => Response {
+                        src: msg.dest.clone(),
+                        dest: msg.src.clone(),
+                        body: ResponseBody {
+                            msg_type: "error".to_string(),
+                            msg_id: Some(msg_counter),
+                            in_reply_to: msg.body.msg_id,
+                            value: None,
+                            code: Some(13),
+                            text: Some("internal error".to_string()),
+                        },
+                    },
                 }
             }
             "write" => {
@@ -144,7 +138,7 @@ fn main() -> io::Result<()> {
                 let sds = SDS::from_str(&value);
                 let cmd = Command::set(key, sds);
                 let _ = executor.execute(&cmd);
-                
+
                 Response {
                     src: msg.dest.clone(),
                     dest: msg.src.clone(),
@@ -162,10 +156,10 @@ fn main() -> io::Result<()> {
                 let key = value_to_string(&msg.body.key);
                 let from_value = value_to_string(&msg.body.from);
                 let to_value = value_to_string(&msg.body.to);
-                
+
                 let get_cmd = Command::Get(key.clone());
                 let current = executor.execute(&get_cmd);
-                
+
                 match current {
                     RespValue::BulkString(Some(data)) => {
                         let current_str = String::from_utf8_lossy(&data);
@@ -203,57 +197,51 @@ fn main() -> io::Result<()> {
                             }
                         }
                     }
-                    RespValue::BulkString(None) => {
-                        Response {
-                            src: msg.dest.clone(),
-                            dest: msg.src.clone(),
-                            body: ResponseBody {
-                                msg_type: "error".to_string(),
-                                msg_id: Some(msg_counter),
-                                in_reply_to: msg.body.msg_id,
-                                value: None,
-                                code: Some(20),
-                                text: Some("key does not exist".to_string()),
-                            },
-                        }
-                    }
-                    _ => {
-                        Response {
-                            src: msg.dest.clone(),
-                            dest: msg.src.clone(),
-                            body: ResponseBody {
-                                msg_type: "error".to_string(),
-                                msg_id: Some(msg_counter),
-                                in_reply_to: msg.body.msg_id,
-                                value: None,
-                                code: Some(13),
-                                text: Some("internal error".to_string()),
-                            },
-                        }
-                    }
-                }
-            }
-            _ => {
-                Response {
-                    src: msg.dest.clone(),
-                    dest: msg.src.clone(),
-                    body: ResponseBody {
-                        msg_type: "error".to_string(),
-                        msg_id: Some(msg_counter),
-                        in_reply_to: msg.body.msg_id,
-                        value: None,
-                        code: Some(10),
-                        text: Some(format!("unsupported message type: {}", msg.body.msg_type)),
+                    RespValue::BulkString(None) => Response {
+                        src: msg.dest.clone(),
+                        dest: msg.src.clone(),
+                        body: ResponseBody {
+                            msg_type: "error".to_string(),
+                            msg_id: Some(msg_counter),
+                            in_reply_to: msg.body.msg_id,
+                            value: None,
+                            code: Some(20),
+                            text: Some("key does not exist".to_string()),
+                        },
+                    },
+                    _ => Response {
+                        src: msg.dest.clone(),
+                        dest: msg.src.clone(),
+                        body: ResponseBody {
+                            msg_type: "error".to_string(),
+                            msg_id: Some(msg_counter),
+                            in_reply_to: msg.body.msg_id,
+                            value: None,
+                            code: Some(13),
+                            text: Some("internal error".to_string()),
+                        },
                     },
                 }
             }
+            _ => Response {
+                src: msg.dest.clone(),
+                dest: msg.src.clone(),
+                body: ResponseBody {
+                    msg_type: "error".to_string(),
+                    msg_id: Some(msg_counter),
+                    in_reply_to: msg.body.msg_id,
+                    value: None,
+                    code: Some(10),
+                    text: Some(format!("unsupported message type: {}", msg.body.msg_type)),
+                },
+            },
         };
-        
+
         let response_str = serde_json::to_string(&response)?;
         writeln!(stdout, "{}", response_str)?;
         stdout.flush()?;
     }
-    
+
     Ok(())
 }
 

@@ -20,9 +20,7 @@
 
 use crate::io::{ProductionTimeSource, TimeSource};
 use crate::replication::state::ReplicatedValue;
-use crate::streaming::{
-    Compression, ManifestManager, ObjectStore, SegmentError,
-};
+use crate::streaming::{Compression, ManifestManager, ObjectStore, SegmentError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Cursor, Read as IoRead, Write as IoWrite};
@@ -82,7 +80,11 @@ impl std::fmt::Display for CheckpointError {
             CheckpointError::Segment(e) => write!(f, "Segment error: {}", e),
             CheckpointError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             CheckpointError::ChecksumMismatch { expected, actual } => {
-                write!(f, "Checksum mismatch: expected {:08x}, got {:08x}", expected, actual)
+                write!(
+                    f,
+                    "Checksum mismatch: expected {:08x}, got {:08x}",
+                    expected, actual
+                )
             }
             CheckpointError::InvalidFormat(msg) => write!(f, "Invalid format: {}", msg),
         }
@@ -208,14 +210,16 @@ impl CheckpointHeader {
 
     fn validate(&self) -> Result<(), CheckpointError> {
         if &self.magic != CHECKPOINT_MAGIC {
-            return Err(CheckpointError::InvalidFormat(
-                format!("Invalid magic: expected RCHK, got {:?}", self.magic)
-            ));
+            return Err(CheckpointError::InvalidFormat(format!(
+                "Invalid magic: expected RCHK, got {:?}",
+                self.magic
+            )));
         }
         if self.version != CHECKPOINT_VERSION {
-            return Err(CheckpointError::InvalidFormat(
-                format!("Unsupported version: {}", self.version)
-            ));
+            return Err(CheckpointError::InvalidFormat(format!(
+                "Unsupported version: {}",
+                self.version
+            )));
         }
         let expected = self.compute_checksum();
         if self.header_checksum != expected {
@@ -328,8 +332,8 @@ impl CheckpointWriter {
         let data = CheckpointData { state };
 
         // Serialize data
-        let serialized = bincode::serialize(&data)
-            .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+        let serialized =
+            bincode::serialize(&data).map_err(|e| CheckpointError::Serialization(e.to_string()))?;
 
         // Optionally compress
         let (final_data, compressed) = {
@@ -389,7 +393,7 @@ impl<'a> CheckpointReader<'a> {
     pub fn open(data: &'a [u8]) -> Result<Self, CheckpointError> {
         if data.len() < CHECKPOINT_HEADER_SIZE {
             return Err(CheckpointError::InvalidFormat(
-                "Checkpoint too small".to_string()
+                "Checkpoint too small".to_string(),
             ));
         }
 
@@ -408,7 +412,7 @@ impl<'a> CheckpointReader<'a> {
         let data_offset = CHECKPOINT_HEADER_SIZE;
         if self.data.len() < data_offset + 4 {
             return Err(CheckpointError::InvalidFormat(
-                "Missing data length".to_string()
+                "Missing data length".to_string(),
             ));
         }
 
@@ -424,9 +428,7 @@ impl<'a> CheckpointReader<'a> {
         let footer_start = data_end;
 
         if self.data.len() < footer_start + 16 {
-            return Err(CheckpointError::InvalidFormat(
-                "Missing footer".to_string()
-            ));
+            return Err(CheckpointError::InvalidFormat("Missing footer".to_string()));
         }
 
         // Read footer
@@ -444,7 +446,7 @@ impl<'a> CheckpointReader<'a> {
             #[cfg(not(feature = "compression"))]
             {
                 return Err(CheckpointError::InvalidFormat(
-                    "Compression not enabled".to_string()
+                    "Compression not enabled".to_string(),
                 ));
             }
         } else {
@@ -462,9 +464,11 @@ impl<'a> CheckpointReader<'a> {
 
         // Verify data size
         if uncompressed.len() as u64 != footer.data_size {
-            return Err(CheckpointError::InvalidFormat(
-                format!("Data size mismatch: expected {}, got {}", footer.data_size, uncompressed.len())
-            ));
+            return Err(CheckpointError::InvalidFormat(format!(
+                "Data size mismatch: expected {}, got {}",
+                footer.data_size,
+                uncompressed.len()
+            )));
         }
 
         Ok(())
@@ -493,7 +497,7 @@ impl<'a> CheckpointReader<'a> {
             #[cfg(not(feature = "compression"))]
             {
                 return Err(CheckpointError::InvalidFormat(
-                    "Compression not enabled".to_string()
+                    "Compression not enabled".to_string(),
                 ));
             }
         } else {
@@ -549,7 +553,13 @@ impl<S: ObjectStore + Clone> CheckpointManager<S, ProductionTimeSource> {
         manifest_manager: ManifestManager<S>,
         config: CheckpointConfig,
     ) -> Self {
-        Self::with_time_source(store, prefix, manifest_manager, config, ProductionTimeSource::new())
+        Self::with_time_source(
+            store,
+            prefix,
+            manifest_manager,
+            config,
+            ProductionTimeSource::new(),
+        )
     }
 }
 
@@ -607,10 +617,7 @@ impl<S: ObjectStore + Clone, T: TimeSource> CheckpointManager<S, T> {
         let size_bytes = checkpoint_data.len() as u64;
 
         // Generate checkpoint key
-        let checkpoint_key = format!(
-            "{}/checkpoints/chk-{:016}.chk",
-            self.prefix, timestamp_ms
-        );
+        let checkpoint_key = format!("{}/checkpoints/chk-{:016}.chk", self.prefix, timestamp_ms);
 
         // Upload to object store
         self.store.put(&checkpoint_key, &checkpoint_data).await?;
@@ -626,11 +633,12 @@ impl<S: ObjectStore + Clone, T: TimeSource> CheckpointManager<S, T> {
 
     /// Check if a checkpoint should be created
     pub async fn should_checkpoint(&self) -> Result<bool, CheckpointError> {
-        let manifest = self.manifest_manager.load_or_create(0).await
-            .map_err(|e| CheckpointError::Io(std::io::Error::new(
+        let manifest = self.manifest_manager.load_or_create(0).await.map_err(|e| {
+            CheckpointError::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                e.to_string()
-            )))?;
+                e.to_string(),
+            ))
+        })?;
 
         // Check minimum segments threshold
         if manifest.segments.len() < self.config.min_segments {
@@ -685,8 +693,8 @@ pub struct CheckpointResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::replication::lattice::{LamportClock, ReplicaId};
     use crate::redis::SDS;
+    use crate::replication::lattice::{LamportClock, ReplicaId};
     use crate::streaming::InMemoryObjectStore;
 
     fn make_state(count: usize) -> HashMap<String, ReplicatedValue> {
@@ -698,10 +706,7 @@ mod tests {
                 time: (i + 1) as u64,
                 replica_id,
             };
-            let value = ReplicatedValue::with_value(
-                SDS::from_str(&format!("value{}", i)),
-                clock,
-            );
+            let value = ReplicatedValue::with_value(SDS::from_str(&format!("value{}", i)), clock);
             state.insert(format!("key{}", i), value);
         }
 

@@ -15,8 +15,12 @@
 //!
 //! All hot key detection and load balancing happens through message passing.
 
-use crate::production::adaptive_replication::{AdaptiveConfig, AdaptiveReplicationManager, AdaptiveStats};
-use crate::production::load_balancer::{LoadBalancerConfig, ScalingDecision, ShardLoadBalancer, ShardMetrics, LoadBalancerStats};
+use crate::production::adaptive_replication::{
+    AdaptiveConfig, AdaptiveReplicationManager, AdaptiveStats,
+};
+use crate::production::load_balancer::{
+    LoadBalancerConfig, LoadBalancerStats, ScalingDecision, ShardLoadBalancer, ShardMetrics,
+};
 use tokio::sync::{mpsc, oneshot};
 
 /// Messages that can be sent to the AdaptiveActor
@@ -62,14 +66,10 @@ pub enum AdaptiveMessage {
     },
 
     /// Get formatted info string for INFO command
-    GetInfo {
-        response: oneshot::Sender<String>,
-    },
+    GetInfo { response: oneshot::Sender<String> },
 
     /// Graceful shutdown
-    Shutdown {
-        response: oneshot::Sender<()>,
-    },
+    Shutdown { response: oneshot::Sender<()> },
 }
 
 /// Combined stats from adaptive components
@@ -104,10 +104,14 @@ impl AdaptiveActorHandle {
     /// Get the replication factor for a key
     pub async fn get_rf_for_key(&self, key: &str) -> u8 {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(AdaptiveMessage::GetRfForKey {
-            key: key.to_string(),
-            response: tx,
-        }).is_err() {
+        if self
+            .tx
+            .send(AdaptiveMessage::GetRfForKey {
+                key: key.to_string(),
+                response: tx,
+            })
+            .is_err()
+        {
             return 3; // Default RF on error
         }
         rx.await.unwrap_or(3)
@@ -116,11 +120,15 @@ impl AdaptiveActorHandle {
     /// Get current hot keys
     pub async fn get_hot_keys(&self, count: usize, timestamp_ms: u64) -> Vec<(String, f64)> {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(AdaptiveMessage::GetHotKeys {
-            count,
-            timestamp_ms,
-            response: tx,
-        }).is_err() {
+        if self
+            .tx
+            .send(AdaptiveMessage::GetHotKeys {
+                count,
+                timestamp_ms,
+                response: tx,
+            })
+            .is_err()
+        {
             return Vec::new();
         }
         rx.await.unwrap_or_default()
@@ -128,7 +136,13 @@ impl AdaptiveActorHandle {
 
     /// Update shard metrics (fire-and-forget)
     #[inline]
-    pub fn update_shard_metrics(&self, shard_id: usize, key_count: usize, ops_per_second: f64, timestamp_ms: u64) {
+    pub fn update_shard_metrics(
+        &self,
+        shard_id: usize,
+        key_count: usize,
+        ops_per_second: f64,
+        timestamp_ms: u64,
+    ) {
         let _ = self.tx.send(AdaptiveMessage::UpdateShardMetrics {
             shard_id,
             key_count,
@@ -140,10 +154,14 @@ impl AdaptiveActorHandle {
     /// Check for scaling recommendations
     pub async fn check_scaling(&self, timestamp_ms: u64) -> Option<ScalingDecision> {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(AdaptiveMessage::CheckScaling {
-            timestamp_ms,
-            response: tx,
-        }).is_err() {
+        if self
+            .tx
+            .send(AdaptiveMessage::CheckScaling {
+                timestamp_ms,
+                response: tx,
+            })
+            .is_err()
+        {
             return None;
         }
         rx.await.unwrap_or(None)
@@ -152,7 +170,11 @@ impl AdaptiveActorHandle {
     /// Get adaptive statistics
     pub async fn get_stats(&self) -> AdaptiveActorStats {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(AdaptiveMessage::GetStats { response: tx }).is_err() {
+        if self
+            .tx
+            .send(AdaptiveMessage::GetStats { response: tx })
+            .is_err()
+        {
             return AdaptiveActorStats::default();
         }
         rx.await.unwrap_or_default()
@@ -161,7 +183,11 @@ impl AdaptiveActorHandle {
     /// Get formatted info string
     pub async fn get_info(&self) -> String {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(AdaptiveMessage::GetInfo { response: tx }).is_err() {
+        if self
+            .tx
+            .send(AdaptiveMessage::GetInfo { response: tx })
+            .is_err()
+        {
             return String::new();
         }
         rx.await.unwrap_or_default()
@@ -170,7 +196,11 @@ impl AdaptiveActorHandle {
     /// Graceful shutdown
     pub async fn shutdown(&self) {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(AdaptiveMessage::Shutdown { response: tx }).is_ok() {
+        if self
+            .tx
+            .send(AdaptiveMessage::Shutdown { response: tx })
+            .is_ok()
+        {
             let _ = rx.await;
         }
     }
@@ -250,7 +280,11 @@ impl AdaptiveActor {
     async fn run(mut self) {
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                AdaptiveMessage::ObserveAccess { key, is_write, timestamp_ms } => {
+                AdaptiveMessage::ObserveAccess {
+                    key,
+                    is_write,
+                    timestamp_ms,
+                } => {
                     if let Some(ref mut manager) = self.adaptive_manager {
                         manager.observe(&key, is_write, timestamp_ms);
                     }
@@ -268,7 +302,11 @@ impl AdaptiveActor {
                     let _ = response.send(rf);
                 }
 
-                AdaptiveMessage::GetHotKeys { count, timestamp_ms, response } => {
+                AdaptiveMessage::GetHotKeys {
+                    count,
+                    timestamp_ms,
+                    response,
+                } => {
                     let hot_keys = if let Some(ref manager) = self.adaptive_manager {
                         manager.get_top_hot_keys(count, timestamp_ms)
                     } else {
@@ -277,22 +315,33 @@ impl AdaptiveActor {
                     let _ = response.send(hot_keys);
                 }
 
-                AdaptiveMessage::UpdateShardMetrics { shard_id, key_count, ops_per_second, timestamp_ms } => {
+                AdaptiveMessage::UpdateShardMetrics {
+                    shard_id,
+                    key_count,
+                    ops_per_second,
+                    timestamp_ms,
+                } => {
                     if let Some(ref mut balancer) = self.load_balancer {
-                        balancer.update_metrics(shard_id, ShardMetrics {
+                        balancer.update_metrics(
                             shard_id,
-                            key_count,
-                            ops_per_second,
-                            memory_bytes: 0,
-                            last_update_ms: timestamp_ms,
-                        });
+                            ShardMetrics {
+                                shard_id,
+                                key_count,
+                                ops_per_second,
+                                memory_bytes: 0,
+                                last_update_ms: timestamp_ms,
+                            },
+                        );
                     }
 
                     #[cfg(debug_assertions)]
                     self.verify_invariants();
                 }
 
-                AdaptiveMessage::CheckScaling { timestamp_ms, response } => {
+                AdaptiveMessage::CheckScaling {
+                    timestamp_ms,
+                    response,
+                } => {
                     let decision = if let Some(ref balancer) = self.load_balancer {
                         let decision = balancer.analyze(timestamp_ms);
                         if decision != ScalingDecision::NoChange {
@@ -332,7 +381,10 @@ impl AdaptiveActor {
         let mut info = String::new();
 
         info.push_str("# Adaptive\r\n");
-        info.push_str(&format!("adaptive_replication:{}\r\n", self.adaptive_manager.is_some()));
+        info.push_str(&format!(
+            "adaptive_replication:{}\r\n",
+            self.adaptive_manager.is_some()
+        ));
         info.push_str(&format!("auto_scale:{}\r\n", self.load_balancer.is_some()));
 
         if let Some(ref manager) = self.adaptive_manager {

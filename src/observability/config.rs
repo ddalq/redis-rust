@@ -44,10 +44,8 @@ impl DatadogConfig {
                 .unwrap_or_else(|_| "127.0.0.1:8125".parse().unwrap()),
             trace_addr: std::env::var("DD_TRACE_AGENT_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:8126".to_string()),
-            service_name: std::env::var("DD_SERVICE")
-                .unwrap_or_else(|_| "redis-rust".to_string()),
-            env: std::env::var("DD_ENV")
-                .unwrap_or_else(|_| "development".to_string()),
+            service_name: std::env::var("DD_SERVICE").unwrap_or_else(|_| "redis-rust".to_string()),
+            env: std::env::var("DD_ENV").unwrap_or_else(|_| "development".to_string()),
             version: std::env::var("DD_VERSION")
                 .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string()),
             trace_sample_rate: std::env::var("DD_TRACE_SAMPLE_RATE")
@@ -82,7 +80,8 @@ impl DatadogConfig {
 
     /// Get all tags as formatted strings for DogStatsD
     pub fn formatted_tags(&self) -> Vec<String> {
-        let mut tags: Vec<String> = self.global_tags
+        let mut tags: Vec<String> = self
+            .global_tags
             .iter()
             .map(|(k, v)| format!("{}:{}", k, v))
             .collect();

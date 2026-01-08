@@ -19,71 +19,73 @@
 //! - **Batched writes**: Efficient 250ms flush interval
 //! - **Checksummed segments**: CRC32 validation
 
-pub mod object_store;
-pub mod segment;
-pub mod config;
-pub mod write_buffer;
-pub mod delta_sink;
-pub mod simulated_store;
-pub mod manifest;
-pub mod recovery;
-pub mod persistence;
 pub mod checkpoint;
-pub mod compaction;
-pub mod integration;
 pub mod clock;
-pub mod dst;
+pub mod compaction;
 pub mod compaction_dst;
+pub mod config;
+pub mod delta_sink;
+pub mod dst;
+pub mod integration;
+pub mod manifest;
+pub mod object_store;
+pub mod persistence;
+pub mod recovery;
 #[cfg(feature = "s3")]
 pub mod s3_store;
+pub mod segment;
+pub mod simulated_store;
+pub mod write_buffer;
 
-pub use object_store::{ObjectStore, ObjectMeta, ListResult, ObjectStoreError};
-pub use object_store::{InMemoryObjectStore, LocalFsObjectStore};
-pub use segment::{
-    Segment, SegmentWriter, SegmentReader, SegmentHeader, SegmentFooter,
-    SegmentError, Compression,
-};
-pub use config::{
-    StreamingConfig, WriteBufferConfig, ObjectStoreType,
-    CheckpointConfig as CheckpointConfigSerde, CompactionConfig as CompactionConfigSerde,
-};
-pub use write_buffer::{WriteBuffer, WriteBufferError, WriteBufferStats, FlushWorker, FlushWorkerHandle};
-pub use delta_sink::{
-    DeltaSinkSender, DeltaSinkReceiver, DeltaSinkError,
-    delta_sink_channel, PersistenceWorker as DeltaSinkPersistenceWorker,
-    PersistenceWorkerHandle as DeltaSinkPersistenceWorkerHandle,
-};
-pub use simulated_store::{SimulatedObjectStore, SimulatedStoreConfig, SimulatedStoreStats};
-pub use manifest::{Manifest, ManifestManager, ManifestError, SegmentInfo, CheckpointInfo};
-pub use recovery::{RecoveryManager, RecoveryError, RecoveredState, RecoveryProgress, RecoveryPhase, RecoveryStats};
-pub use persistence::{
-    StreamingPersistence, PersistenceError, PersistenceStats, FlushResult,
-    PersistenceWorker, PersistenceWorkerHandle,
-};
 pub use checkpoint::{
-    CheckpointConfig, CheckpointError, CheckpointWriter, CheckpointReader,
-    CheckpointManager, CheckpointResult, CheckpointData,
+    CheckpointConfig, CheckpointData, CheckpointError, CheckpointManager, CheckpointReader,
+    CheckpointResult, CheckpointWriter,
 };
+pub use clock::{ProductionClock, SimulatedClock, StreamingClock, StreamingTimestamp};
 pub use compaction::{
-    CompactionConfig, CompactionError, CompactionResult, CompactionStats,
-    Compactor, CompactionWorker, CompactionWorkerHandle,
-};
-pub use integration::{
-    StreamingIntegration, IntegrationError, WorkerHandles,
-    StreamingIntegrationTrait, create_integration,
-};
-pub use clock::{StreamingClock, StreamingTimestamp, ProductionClock, SimulatedClock};
-pub use dst::{
-    StreamingDSTConfig, StreamingDSTHarness, StreamingDSTResult,
-    StreamingWorkload, StreamingOperation, OperationOutcome,
-    run_dst_batch, summarize_batch,
+    CompactionConfig, CompactionError, CompactionResult, CompactionStats, CompactionWorker,
+    CompactionWorkerHandle, Compactor,
 };
 pub use compaction_dst::{
-    CompactionDSTConfig, CompactionDSTHarness, CompactionDSTResult,
-    CompactionWorkload, CompactionOperation, CompactionOutcome,
-    run_compaction_dst_batch, summarize_compaction_batch,
+    run_compaction_dst_batch, summarize_compaction_batch, CompactionDSTConfig,
+    CompactionDSTHarness, CompactionDSTResult, CompactionOperation, CompactionOutcome,
+    CompactionWorkload,
+};
+#[cfg(feature = "s3")]
+pub use config::S3Config;
+pub use config::{
+    CheckpointConfig as CheckpointConfigSerde, CompactionConfig as CompactionConfigSerde,
+    ObjectStoreType, StreamingConfig, WriteBufferConfig,
+};
+pub use delta_sink::{
+    delta_sink_channel, DeltaSinkError, DeltaSinkReceiver, DeltaSinkSender,
+    PersistenceWorker as DeltaSinkPersistenceWorker,
+    PersistenceWorkerHandle as DeltaSinkPersistenceWorkerHandle,
+};
+pub use dst::{
+    run_dst_batch, summarize_batch, OperationOutcome, StreamingDSTConfig, StreamingDSTHarness,
+    StreamingDSTResult, StreamingOperation, StreamingWorkload,
+};
+pub use integration::{
+    create_integration, IntegrationError, StreamingIntegration, StreamingIntegrationTrait,
+    WorkerHandles,
+};
+pub use manifest::{CheckpointInfo, Manifest, ManifestError, ManifestManager, SegmentInfo};
+pub use object_store::{InMemoryObjectStore, LocalFsObjectStore};
+pub use object_store::{ListResult, ObjectMeta, ObjectStore, ObjectStoreError};
+pub use persistence::{
+    FlushResult, PersistenceError, PersistenceStats, PersistenceWorker, PersistenceWorkerHandle,
+    StreamingPersistence,
+};
+pub use recovery::{
+    RecoveredState, RecoveryError, RecoveryManager, RecoveryPhase, RecoveryProgress, RecoveryStats,
 };
 #[cfg(feature = "s3")]
 pub use s3_store::S3ObjectStore;
-#[cfg(feature = "s3")]
-pub use config::S3Config;
+pub use segment::{
+    Compression, Segment, SegmentError, SegmentFooter, SegmentHeader, SegmentReader, SegmentWriter,
+};
+pub use simulated_store::{SimulatedObjectStore, SimulatedStoreConfig, SimulatedStoreStats};
+pub use write_buffer::{
+    FlushWorker, FlushWorkerHandle, WriteBuffer, WriteBufferError, WriteBufferStats,
+};

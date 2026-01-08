@@ -11,8 +11,8 @@
 //! deterministically.
 
 use super::{DeterministicRng, VirtualTime};
-use crate::redis::{Command, CommandExecutor, RespValue, RespCodec};
-use bytes::{BytesMut, BufMut};
+use crate::redis::{Command, CommandExecutor, RespCodec, RespValue};
+use bytes::{BufMut, BytesMut};
 use std::collections::VecDeque;
 
 /// Simulated TCP read buffer behavior
@@ -105,11 +105,13 @@ impl SimulatedReadBuffer {
                 let key_bytes = key.as_bytes();
                 let value_bytes = value.as_bytes();
                 self.pending_data.extend_from_slice(b"*3\r\n$3\r\nSET\r\n$");
-                self.pending_data.extend_from_slice(key_bytes.len().to_string().as_bytes());
+                self.pending_data
+                    .extend_from_slice(key_bytes.len().to_string().as_bytes());
                 self.pending_data.extend_from_slice(b"\r\n");
                 self.pending_data.extend_from_slice(key_bytes);
                 self.pending_data.extend_from_slice(b"\r\n$");
-                self.pending_data.extend_from_slice(value_bytes.len().to_string().as_bytes());
+                self.pending_data
+                    .extend_from_slice(value_bytes.len().to_string().as_bytes());
                 self.pending_data.extend_from_slice(b"\r\n");
                 self.pending_data.extend_from_slice(value_bytes);
                 self.pending_data.extend_from_slice(b"\r\n");
@@ -117,15 +119,18 @@ impl SimulatedReadBuffer {
             Command::Get(key) => {
                 let key_bytes = key.as_bytes();
                 self.pending_data.extend_from_slice(b"*2\r\n$3\r\nGET\r\n$");
-                self.pending_data.extend_from_slice(key_bytes.len().to_string().as_bytes());
+                self.pending_data
+                    .extend_from_slice(key_bytes.len().to_string().as_bytes());
                 self.pending_data.extend_from_slice(b"\r\n");
                 self.pending_data.extend_from_slice(key_bytes);
                 self.pending_data.extend_from_slice(b"\r\n");
             }
             Command::Incr(key) => {
                 let key_bytes = key.as_bytes();
-                self.pending_data.extend_from_slice(b"*2\r\n$4\r\nINCR\r\n$");
-                self.pending_data.extend_from_slice(key_bytes.len().to_string().as_bytes());
+                self.pending_data
+                    .extend_from_slice(b"*2\r\n$4\r\nINCR\r\n$");
+                self.pending_data
+                    .extend_from_slice(key_bytes.len().to_string().as_bytes());
                 self.pending_data.extend_from_slice(b"\r\n");
                 self.pending_data.extend_from_slice(key_bytes);
                 self.pending_data.extend_from_slice(b"\r\n");
@@ -133,11 +138,13 @@ impl SimulatedReadBuffer {
             Command::Del(keys) => {
                 // Encode DEL with all keys
                 let num_elements = 1 + keys.len();
-                self.pending_data.extend_from_slice(format!("*{}\r\n$3\r\nDEL\r\n", num_elements).as_bytes());
+                self.pending_data
+                    .extend_from_slice(format!("*{}\r\n$3\r\nDEL\r\n", num_elements).as_bytes());
                 for key in keys {
                     let key_bytes = key.as_bytes();
                     self.pending_data.extend_from_slice(b"$");
-                    self.pending_data.extend_from_slice(key_bytes.len().to_string().as_bytes());
+                    self.pending_data
+                        .extend_from_slice(key_bytes.len().to_string().as_bytes());
                     self.pending_data.extend_from_slice(b"\r\n");
                     self.pending_data.extend_from_slice(key_bytes);
                     self.pending_data.extend_from_slice(b"\r\n");
@@ -207,8 +214,7 @@ impl SimulatedWriteBuffer {
         if self.bytes_per_flush.is_empty() {
             0.0
         } else {
-            self.bytes_per_flush.iter().sum::<usize>() as f64
-                / self.bytes_per_flush.len() as f64
+            self.bytes_per_flush.iter().sum::<usize>() as f64 / self.bytes_per_flush.len() as f64
         }
     }
 
@@ -504,7 +510,10 @@ impl PipelineSimulator {
             let commands: Vec<Command> = (0..size)
                 .map(|i| {
                     if rng.gen_bool(0.5) {
-                        Command::set(format!("key{}", i), crate::redis::SDS::from_str(&format!("value{}", i)))
+                        Command::set(
+                            format!("key{}", i),
+                            crate::redis::SDS::from_str(&format!("value{}", i)),
+                        )
                     } else {
                         Command::Get(format!("key{}", i % (i.max(1))))
                     }
@@ -518,8 +527,8 @@ impl PipelineSimulator {
             let batched_flushes = batched_conn.flush_count();
 
             // Test with unbatched flushing (old buggy behavior)
-            let mut unbatched_conn = SimulatedConnection::new(self.seed + size as u64)
-                .with_unbatched_flush();
+            let mut unbatched_conn =
+                SimulatedConnection::new(self.seed + size as u64).with_unbatched_flush();
             unbatched_conn.send_pipeline(commands.clone());
             let unbatched_responses = unbatched_conn.process();
             let unbatched_flushes = unbatched_conn.flush_count();
@@ -553,7 +562,11 @@ impl PipelineSimulator {
                 result.pipeline_size,
                 result.batched_flushes,
                 result.unbatched_flushes,
-                if result.all_responses_correct { "Yes" } else { "NO" }
+                if result.all_responses_correct {
+                    "Yes"
+                } else {
+                    "NO"
+                }
             ));
         }
 
@@ -617,7 +630,11 @@ mod tests {
 
         // But different flush counts!
         assert_eq!(batched.flush_count(), 1, "Batched should flush once");
-        assert_eq!(unbatched.flush_count(), 4, "Unbatched flushes after each command");
+        assert_eq!(
+            unbatched.flush_count(),
+            4,
+            "Unbatched flushes after each command"
+        );
     }
 
     #[test]
@@ -657,7 +674,11 @@ mod tests {
         let responses = conn.process();
 
         assert_eq!(responses.len(), 100);
-        assert_eq!(conn.flush_count(), 1, "100 commands should still be 1 flush");
+        assert_eq!(
+            conn.flush_count(),
+            1,
+            "100 commands should still be 1 flush"
+        );
 
         // Compare with unbatched
         let mut unbatched = SimulatedConnection::new(42).with_unbatched_flush();
@@ -689,8 +710,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_simulator() {
-        let mut sim = PipelineSimulator::new(12345)
-            .with_sizes(vec![1, 4, 16, 64]);
+        let mut sim = PipelineSimulator::new(12345).with_sizes(vec![1, 4, 16, 64]);
 
         sim.run();
 
@@ -698,7 +718,11 @@ mod tests {
 
         // All results should be correct
         for result in sim.results.iter() {
-            assert!(result.all_responses_correct, "Pipeline {} failed", result.pipeline_size);
+            assert!(
+                result.all_responses_correct,
+                "Pipeline {} failed",
+                result.pipeline_size
+            );
 
             // Batched should always be <= unbatched flushes
             assert!(
@@ -744,8 +768,7 @@ mod tests {
                 assert!(
                     result.all_responses_correct,
                     "Seed {} pipeline {} failed correctness check",
-                    seed,
-                    result.pipeline_size
+                    seed, result.pipeline_size
                 );
             }
         }

@@ -6,8 +6,8 @@
 //! - UpDownCounter: PNCounter (supports increment and decrement)
 //! - Set: ORSet (observed-remove for unique tracking)
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::replication::lattice::{
     GCounter, LamportClock, LwwRegister, ORSet, PNCounter, ReplicaId,
@@ -80,7 +80,8 @@ impl DistributionStats {
         if self.samples.len() < self.max_samples {
             self.samples.push(value);
             // TigerStyle: Handle NaN gracefully - treat as greater than all other values
-            self.samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
+            self.samples
+                .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
         }
     }
 
@@ -127,7 +128,9 @@ impl DistributionStats {
         merged.samples = self.samples.clone();
         merged.samples.extend(other.samples.iter().cloned());
         // TigerStyle: Handle NaN gracefully - treat as greater than all other values
-        merged.samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
+        merged
+            .samples
+            .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
         merged.samples.truncate(merged.max_samples);
 
         merged
@@ -310,10 +313,7 @@ impl MetricsState {
 
     /// Add value to set (for unique tracking)
     pub fn add_to_set(&mut self, key: &str, value: String) {
-        let set = self
-            .sets
-            .entry(key.to_string())
-            .or_insert_with(ORSet::new);
+        let set = self.sets.entry(key.to_string()).or_insert_with(ORSet::new);
         set.add(value.clone(), self.replica_id);
 
         // Generate delta for replication
@@ -351,10 +351,7 @@ impl MetricsState {
 
         match delta.delta {
             MetricDeltaValue::CounterIncrement { amount } => {
-                let counter = self
-                    .counters
-                    .entry(delta.key)
-                    .or_insert_with(GCounter::new);
+                let counter = self.counters.entry(delta.key).or_insert_with(GCounter::new);
                 counter.increment_by(delta.source_replica, amount);
             }
             MetricDeltaValue::GaugeUpdate { value, timestamp } => {
@@ -470,8 +467,8 @@ impl MetricsState {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::types::TagSet;
+    use super::*;
 
     #[test]
     fn test_counter_increment() {

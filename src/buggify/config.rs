@@ -3,8 +3,8 @@
 //! Defines fault probabilities and provides preset configurations for different
 //! testing scenarios (calm, moderate, chaos).
 
-use std::collections::HashMap;
 use super::faults;
+use std::collections::HashMap;
 
 /// Configuration for fault injection probabilities
 #[derive(Debug, Clone)]
@@ -64,41 +64,41 @@ impl FaultConfig {
         config.global_multiplier = 1.0;
 
         // Network faults
-        config.set(faults::network::PACKET_DROP, 0.01);      // 1%
-        config.set(faults::network::PACKET_CORRUPT, 0.001);  // 0.1%
-        config.set(faults::network::PARTIAL_WRITE, 0.005);   // 0.5%
-        config.set(faults::network::REORDER, 0.02);          // 2%
+        config.set(faults::network::PACKET_DROP, 0.01); // 1%
+        config.set(faults::network::PACKET_CORRUPT, 0.001); // 0.1%
+        config.set(faults::network::PARTIAL_WRITE, 0.005); // 0.5%
+        config.set(faults::network::REORDER, 0.02); // 2%
         config.set(faults::network::CONNECTION_RESET, 0.005); // 0.5%
-        config.set(faults::network::CONNECT_TIMEOUT, 0.01);  // 1%
-        config.set(faults::network::DELAY, 0.05);            // 5%
-        config.set(faults::network::DUPLICATE, 0.005);       // 0.5%
+        config.set(faults::network::CONNECT_TIMEOUT, 0.01); // 1%
+        config.set(faults::network::DELAY, 0.05); // 5%
+        config.set(faults::network::DUPLICATE, 0.005); // 0.5%
 
         // Timer faults
-        config.set(faults::timer::DRIFT_FAST, 0.01);         // 1%
-        config.set(faults::timer::DRIFT_SLOW, 0.01);         // 1%
-        config.set(faults::timer::SKIP, 0.01);               // 1%
-        config.set(faults::timer::DUPLICATE, 0.005);         // 0.5%
-        config.set(faults::timer::JUMP_FORWARD, 0.001);      // 0.1%
-        config.set(faults::timer::JUMP_BACKWARD, 0.0005);    // 0.05%
+        config.set(faults::timer::DRIFT_FAST, 0.01); // 1%
+        config.set(faults::timer::DRIFT_SLOW, 0.01); // 1%
+        config.set(faults::timer::SKIP, 0.01); // 1%
+        config.set(faults::timer::DUPLICATE, 0.005); // 0.5%
+        config.set(faults::timer::JUMP_FORWARD, 0.001); // 0.1%
+        config.set(faults::timer::JUMP_BACKWARD, 0.0005); // 0.05%
 
         // Process faults
-        config.set(faults::process::CRASH, 0.001);           // 0.1%
-        config.set(faults::process::PAUSE, 0.01);            // 1%
-        config.set(faults::process::SLOW, 0.02);             // 2%
-        config.set(faults::process::OOM, 0.0001);            // 0.01%
-        config.set(faults::process::CPU_STARVATION, 0.01);   // 1%
+        config.set(faults::process::CRASH, 0.001); // 0.1%
+        config.set(faults::process::PAUSE, 0.01); // 1%
+        config.set(faults::process::SLOW, 0.02); // 2%
+        config.set(faults::process::OOM, 0.0001); // 0.01%
+        config.set(faults::process::CPU_STARVATION, 0.01); // 1%
 
         // Disk faults (for future persistence)
-        config.set(faults::disk::WRITE_FAIL, 0.001);         // 0.1%
-        config.set(faults::disk::PARTIAL_WRITE, 0.001);      // 0.1%
-        config.set(faults::disk::CORRUPTION, 0.0001);        // 0.01%
-        config.set(faults::disk::SLOW, 0.02);                // 2%
-        config.set(faults::disk::FSYNC_FAIL, 0.0005);        // 0.05%
-        config.set(faults::disk::STALE_READ, 0.001);         // 0.1%
-        config.set(faults::disk::DISK_FULL, 0.0001);         // 0.01%
+        config.set(faults::disk::WRITE_FAIL, 0.001); // 0.1%
+        config.set(faults::disk::PARTIAL_WRITE, 0.001); // 0.1%
+        config.set(faults::disk::CORRUPTION, 0.0001); // 0.01%
+        config.set(faults::disk::SLOW, 0.02); // 2%
+        config.set(faults::disk::FSYNC_FAIL, 0.0005); // 0.05%
+        config.set(faults::disk::STALE_READ, 0.001); // 0.1%
+        config.set(faults::disk::DISK_FULL, 0.0001); // 0.01%
 
         // Replication faults
-        config.set(faults::replication::GOSSIP_DROP, 0.02);  // 2%
+        config.set(faults::replication::GOSSIP_DROP, 0.02); // 2%
         config.set(faults::replication::GOSSIP_DELAY, 0.05); // 5%
         config.set(faults::replication::GOSSIP_CORRUPT, 0.001); // 0.1%
         config.set(faults::replication::SPLIT_BRAIN, 0.0001); // 0.01%
@@ -113,41 +113,41 @@ impl FaultConfig {
         config.global_multiplier = 3.0;
 
         // Network faults (high)
-        config.set(faults::network::PACKET_DROP, 0.05);      // 5%
-        config.set(faults::network::PACKET_CORRUPT, 0.01);   // 1%
-        config.set(faults::network::PARTIAL_WRITE, 0.02);    // 2%
-        config.set(faults::network::REORDER, 0.10);          // 10%
+        config.set(faults::network::PACKET_DROP, 0.05); // 5%
+        config.set(faults::network::PACKET_CORRUPT, 0.01); // 1%
+        config.set(faults::network::PARTIAL_WRITE, 0.02); // 2%
+        config.set(faults::network::REORDER, 0.10); // 10%
         config.set(faults::network::CONNECTION_RESET, 0.02); // 2%
-        config.set(faults::network::CONNECT_TIMEOUT, 0.05);  // 5%
-        config.set(faults::network::DELAY, 0.15);            // 15%
-        config.set(faults::network::DUPLICATE, 0.02);        // 2%
+        config.set(faults::network::CONNECT_TIMEOUT, 0.05); // 5%
+        config.set(faults::network::DELAY, 0.15); // 15%
+        config.set(faults::network::DUPLICATE, 0.02); // 2%
 
         // Timer faults (high)
-        config.set(faults::timer::DRIFT_FAST, 0.05);         // 5%
-        config.set(faults::timer::DRIFT_SLOW, 0.05);         // 5%
-        config.set(faults::timer::SKIP, 0.05);               // 5%
-        config.set(faults::timer::DUPLICATE, 0.02);          // 2%
-        config.set(faults::timer::JUMP_FORWARD, 0.01);       // 1%
-        config.set(faults::timer::JUMP_BACKWARD, 0.005);     // 0.5%
+        config.set(faults::timer::DRIFT_FAST, 0.05); // 5%
+        config.set(faults::timer::DRIFT_SLOW, 0.05); // 5%
+        config.set(faults::timer::SKIP, 0.05); // 5%
+        config.set(faults::timer::DUPLICATE, 0.02); // 2%
+        config.set(faults::timer::JUMP_FORWARD, 0.01); // 1%
+        config.set(faults::timer::JUMP_BACKWARD, 0.005); // 0.5%
 
         // Process faults (elevated)
-        config.set(faults::process::CRASH, 0.005);           // 0.5%
-        config.set(faults::process::PAUSE, 0.05);            // 5%
-        config.set(faults::process::SLOW, 0.10);             // 10%
-        config.set(faults::process::OOM, 0.001);             // 0.1%
-        config.set(faults::process::CPU_STARVATION, 0.05);   // 5%
+        config.set(faults::process::CRASH, 0.005); // 0.5%
+        config.set(faults::process::PAUSE, 0.05); // 5%
+        config.set(faults::process::SLOW, 0.10); // 10%
+        config.set(faults::process::OOM, 0.001); // 0.1%
+        config.set(faults::process::CPU_STARVATION, 0.05); // 5%
 
         // Disk faults (elevated)
-        config.set(faults::disk::WRITE_FAIL, 0.005);         // 0.5%
-        config.set(faults::disk::PARTIAL_WRITE, 0.005);      // 0.5%
-        config.set(faults::disk::CORRUPTION, 0.001);         // 0.1%
-        config.set(faults::disk::SLOW, 0.10);                // 10%
-        config.set(faults::disk::FSYNC_FAIL, 0.002);         // 0.2%
-        config.set(faults::disk::STALE_READ, 0.005);         // 0.5%
-        config.set(faults::disk::DISK_FULL, 0.001);          // 0.1%
+        config.set(faults::disk::WRITE_FAIL, 0.005); // 0.5%
+        config.set(faults::disk::PARTIAL_WRITE, 0.005); // 0.5%
+        config.set(faults::disk::CORRUPTION, 0.001); // 0.1%
+        config.set(faults::disk::SLOW, 0.10); // 10%
+        config.set(faults::disk::FSYNC_FAIL, 0.002); // 0.2%
+        config.set(faults::disk::STALE_READ, 0.005); // 0.5%
+        config.set(faults::disk::DISK_FULL, 0.001); // 0.1%
 
         // Replication faults (high)
-        config.set(faults::replication::GOSSIP_DROP, 0.10);  // 10%
+        config.set(faults::replication::GOSSIP_DROP, 0.10); // 10%
         config.set(faults::replication::GOSSIP_DELAY, 0.15); // 15%
         config.set(faults::replication::GOSSIP_CORRUPT, 0.005); // 0.5%
         config.set(faults::replication::SPLIT_BRAIN, 0.001); // 0.1%
@@ -158,7 +158,8 @@ impl FaultConfig {
 
     /// Set probability for a specific fault
     pub fn set(&mut self, fault_id: &'static str, probability: f64) -> &mut Self {
-        self.probabilities.insert(fault_id, probability.clamp(0.0, 1.0));
+        self.probabilities
+            .insert(fault_id, probability.clamp(0.0, 1.0));
         self
     }
 
@@ -231,7 +232,9 @@ mod tests {
         let moderate = FaultConfig::moderate();
         let chaos = FaultConfig::chaos();
 
-        assert!(chaos.get(faults::network::PACKET_DROP) > moderate.get(faults::network::PACKET_DROP));
+        assert!(
+            chaos.get(faults::network::PACKET_DROP) > moderate.get(faults::network::PACKET_DROP)
+        );
     }
 
     #[test]

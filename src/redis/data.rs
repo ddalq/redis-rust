@@ -1,7 +1,7 @@
-use std::collections::VecDeque;
 use ahash::{AHashMap, AHashSet};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use serde::{Serialize, Deserialize};
+use std::collections::VecDeque;
 
 /// Small String Optimization threshold - strings up to this size are stored inline
 const SSO_MAX_LEN: usize = 23;
@@ -362,11 +362,25 @@ impl RedisList {
         #[cfg(debug_assertions)]
         {
             if was_empty {
-                debug_assert!(result.is_none(), "Postcondition violated: pop from empty must return None");
-                debug_assert_eq!(self.items.len(), 0, "Postcondition violated: empty list must stay empty");
+                debug_assert!(
+                    result.is_none(),
+                    "Postcondition violated: pop from empty must return None"
+                );
+                debug_assert_eq!(
+                    self.items.len(),
+                    0,
+                    "Postcondition violated: empty list must stay empty"
+                );
             } else {
-                debug_assert!(result.is_some(), "Postcondition violated: pop from non-empty must return Some");
-                debug_assert_eq!(self.items.len(), pre_len - 1, "Postcondition violated: len must decrease by 1");
+                debug_assert!(
+                    result.is_some(),
+                    "Postcondition violated: pop from non-empty must return Some"
+                );
+                debug_assert_eq!(
+                    self.items.len(),
+                    pre_len - 1,
+                    "Postcondition violated: len must decrease by 1"
+                );
             }
         }
 
@@ -386,11 +400,25 @@ impl RedisList {
         #[cfg(debug_assertions)]
         {
             if was_empty {
-                debug_assert!(result.is_none(), "Postcondition violated: pop from empty must return None");
-                debug_assert_eq!(self.items.len(), 0, "Postcondition violated: empty list must stay empty");
+                debug_assert!(
+                    result.is_none(),
+                    "Postcondition violated: pop from empty must return None"
+                );
+                debug_assert_eq!(
+                    self.items.len(),
+                    0,
+                    "Postcondition violated: empty list must stay empty"
+                );
             } else {
-                debug_assert!(result.is_some(), "Postcondition violated: pop from non-empty must return Some");
-                debug_assert_eq!(self.items.len(), pre_len - 1, "Postcondition violated: len must decrease by 1");
+                debug_assert!(
+                    result.is_some(),
+                    "Postcondition violated: pop from non-empty must return Some"
+                );
+                debug_assert_eq!(
+                    self.items.len(),
+                    pre_len - 1,
+                    "Postcondition violated: len must decrease by 1"
+                );
             }
         }
 
@@ -408,8 +436,16 @@ impl RedisList {
 
     pub fn range(&self, start: isize, stop: isize) -> Vec<SDS> {
         let len = self.items.len() as isize;
-        let start = if start < 0 { (len + start).max(0) } else { start.min(len) };
-        let stop = if stop < 0 { (len + stop).max(-1) } else { stop.min(len - 1) };
+        let start = if start < 0 {
+            (len + start).max(0)
+        } else {
+            start.min(len)
+        };
+        let stop = if stop < 0 {
+            (len + stop).max(-1)
+        } else {
+            stop.min(len - 1)
+        };
 
         if start > stop || start >= len {
             return Vec::new();
@@ -480,8 +516,16 @@ impl RedisList {
         }
 
         // Normalize indices
-        let s = if start < 0 { (len + start).max(0) } else { start.min(len) };
-        let e = if stop < 0 { (len + stop).max(-1) } else { stop.min(len - 1) };
+        let s = if start < 0 {
+            (len + start).max(0)
+        } else {
+            start.min(len)
+        };
+        let e = if stop < 0 {
+            (len + stop).max(-1)
+        } else {
+            stop.min(len - 1)
+        };
 
         if s > e || s >= len {
             self.items.clear();
@@ -490,7 +534,8 @@ impl RedisList {
         }
 
         // Keep only elements in range
-        let new_items: VecDeque<SDS> = self.items
+        let new_items: VecDeque<SDS> = self
+            .items
             .iter()
             .skip(s as usize)
             .take((e - s + 1) as usize)
@@ -637,10 +682,7 @@ impl RedisSet {
     }
 
     pub fn members(&self) -> Vec<SDS> {
-        self.members
-            .iter()
-            .map(|s| SDS::from_str(s))
-            .collect()
+        self.members.iter().map(|s| SDS::from_str(s)).collect()
     }
 
     pub fn len(&self) -> usize {
@@ -976,8 +1018,16 @@ impl RedisSortedSet {
 
     pub fn range(&self, start: isize, stop: isize) -> Vec<(SDS, f64)> {
         let len = self.sorted_members.len() as isize;
-        let start = if start < 0 { (len + start).max(0) } else { start.min(len) };
-        let stop = if stop < 0 { (len + stop).max(-1) } else { stop.min(len - 1) };
+        let start = if start < 0 {
+            (len + start).max(0)
+        } else {
+            start.min(len)
+        };
+        let stop = if stop < 0 {
+            (len + stop).max(-1)
+        } else {
+            stop.min(len - 1)
+        };
 
         if start > stop || start >= len {
             return Vec::new();
@@ -993,8 +1043,16 @@ impl RedisSortedSet {
 
     pub fn rev_range(&self, start: isize, stop: isize) -> Vec<(SDS, f64)> {
         let len = self.sorted_members.len() as isize;
-        let start = if start < 0 { (len + start).max(0) } else { start.min(len) };
-        let stop = if stop < 0 { (len + stop).max(-1) } else { stop.min(len - 1) };
+        let start = if start < 0 {
+            (len + start).max(0)
+        } else {
+            start.min(len)
+        };
+        let stop = if stop < 0 {
+            (len + stop).max(-1)
+        } else {
+            stop.min(len - 1)
+        };
 
         if start > stop || start >= len {
             return Vec::new();
@@ -1061,7 +1119,8 @@ impl RedisSortedSet {
             (false, s)
         };
 
-        let score = num_str.parse::<f64>()
+        let score = num_str
+            .parse::<f64>()
             .map_err(|_| "ERR min or max is not a float".to_string())?;
 
         Ok((score, exclusive))
@@ -1072,10 +1131,20 @@ impl RedisSortedSet {
         let (min_score, min_exclusive) = Self::parse_score_bound(min, true)?;
         let (max_score, max_exclusive) = Self::parse_score_bound(max, false)?;
 
-        let count = self.sorted_members.iter()
+        let count = self
+            .sorted_members
+            .iter()
             .filter(|(_, score)| {
-                let above_min = if min_exclusive { *score > min_score } else { *score >= min_score };
-                let below_max = if max_exclusive { *score < max_score } else { *score <= max_score };
+                let above_min = if min_exclusive {
+                    *score > min_score
+                } else {
+                    *score >= min_score
+                };
+                let below_max = if max_exclusive {
+                    *score < max_score
+                } else {
+                    *score <= max_score
+                };
                 above_min && below_max
             })
             .count();
@@ -1084,20 +1153,37 @@ impl RedisSortedSet {
     }
 
     /// ZRANGEBYSCORE - get elements by score range
-    pub fn range_by_score(&self, min: &str, max: &str, with_scores: bool, limit: Option<(isize, usize)>)
-        -> Result<Vec<(String, Option<f64>)>, String>
-    {
+    pub fn range_by_score(
+        &self,
+        min: &str,
+        max: &str,
+        with_scores: bool,
+        limit: Option<(isize, usize)>,
+    ) -> Result<Vec<(String, Option<f64>)>, String> {
         let (min_score, min_exclusive) = Self::parse_score_bound(min, true)?;
         let (max_score, max_exclusive) = Self::parse_score_bound(max, false)?;
 
-        let mut results: Vec<_> = self.sorted_members.iter()
+        let mut results: Vec<_> = self
+            .sorted_members
+            .iter()
             .filter(|(_, score)| {
-                let above_min = if min_exclusive { *score > min_score } else { *score >= min_score };
-                let below_max = if max_exclusive { *score < max_score } else { *score <= max_score };
+                let above_min = if min_exclusive {
+                    *score > min_score
+                } else {
+                    *score >= min_score
+                };
+                let below_max = if max_exclusive {
+                    *score < max_score
+                } else {
+                    *score <= max_score
+                };
                 above_min && below_max
             })
             .map(|(member, score)| {
-                (member.clone(), if with_scores { Some(*score) } else { None })
+                (
+                    member.clone(),
+                    if with_scores { Some(*score) } else { None },
+                )
             })
             .collect();
 
@@ -1345,7 +1431,10 @@ mod hash_tests {
         // Update (invariants checked by verify_invariants in debug)
         hash.set(SDS::from_str("counter"), SDS::from_str("10"));
         assert_eq!(hash.len(), 1);
-        assert_eq!(hash.get(&SDS::from_str("counter")).unwrap().to_string(), "10");
+        assert_eq!(
+            hash.get(&SDS::from_str("counter")).unwrap().to_string(),
+            "10"
+        );
 
         // Delete (invariants checked by verify_invariants in debug)
         hash.delete(&SDS::from_str("counter"));

@@ -224,10 +224,7 @@ async fn test_streaming_dst_500_seeds_moderate() {
     println!("500 Seeds Moderate:\n{}", summary);
 
     let passed = results.iter().filter(|r| r.is_success()).count();
-    assert!(
-        passed >= results.len() * 8 / 10,
-        "At least 80% should pass"
-    );
+    assert!(passed >= results.len() * 8 / 10, "At least 80% should pass");
 }
 
 // =============================================================================

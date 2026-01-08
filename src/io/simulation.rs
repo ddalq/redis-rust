@@ -8,15 +8,18 @@
 //!
 //! Inspired by FoundationDB's simulation framework and TigerBeetle's IO abstraction.
 
-use super::{Clock, Duration, Network, NetworkListener, NetworkStream, Rng, Runtime, Ticker, Timestamp, TimeSource};
+use super::{
+    Clock, Duration, Network, NetworkListener, NetworkStream, Rng, Runtime, Ticker, TimeSource,
+    Timestamp,
+};
 use crate::buggify::{self, faults, FaultConfig};
+use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::future::Future;
 use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
-use std::cmp::Ordering;
 
 // Helper function to check buggify - works around macro import issues
 #[inline]
@@ -311,7 +314,9 @@ impl PartialOrd for TimerEntry {
 impl Ord for TimerEntry {
     fn cmp(&self, other: &Self) -> Ordering {
         // Reverse ordering for min-heap
-        other.wake_time.cmp(&self.wake_time)
+        other
+            .wake_time
+            .cmp(&self.wake_time)
             .then_with(|| other.id.cmp(&self.id))
     }
 }
@@ -472,14 +477,12 @@ impl Network for SimulatedNetwork {
                         wakers: Vec::new(),
                     },
                 );
-                network.pending_connections.insert(addr.clone(), VecDeque::new());
+                network
+                    .pending_connections
+                    .insert(addr.clone(), VecDeque::new());
             }
 
-            Ok(SimulatedListener {
-                ctx,
-                addr,
-                node_id,
-            })
+            Ok(SimulatedListener { ctx, addr, node_id })
         })
     }
 
@@ -518,7 +521,10 @@ impl Network for SimulatedNetwork {
                 if network.partitions.contains(&(node_id, remote_node))
                     || network.partitions.contains(&(remote_node, node_id))
                 {
-                    return Err(IoError::new(ErrorKind::ConnectionRefused, "Network partition"));
+                    return Err(IoError::new(
+                        ErrorKind::ConnectionRefused,
+                        "Network partition",
+                    ));
                 }
 
                 // Queue pending connection for listener
@@ -746,7 +752,8 @@ impl NetworkStream for SimulatedStream {
 
             {
                 let mut rng = ctx.rng.lock().unwrap();
-                if check_buggify(&mut *rng, faults::network::REORDER) && !network.packets.is_empty() {
+                if check_buggify(&mut *rng, faults::network::REORDER) && !network.packets.is_empty()
+                {
                     let pos = rng.gen_range(0, network.packets.len() as u64) as usize;
                     network.packets.insert(pos, packet);
                 } else {
@@ -756,7 +763,11 @@ impl NetworkStream for SimulatedStream {
                             from: node_id,
                             to: remote_node,
                             stream_id,
-                            data: network.packets.back().map(|p| p.data.clone()).unwrap_or_default(),
+                            data: network
+                                .packets
+                                .back()
+                                .map(|p| p.data.clone())
+                                .unwrap_or_default(),
                             delivery_time,
                         };
                         network.packets.push_back(dup);
@@ -883,18 +894,24 @@ mod tests {
         let node2 = NodeId(2);
 
         // Node 1 is 50ms ahead
-        ctx.set_clock_offset(node1, ClockOffset {
-            fixed_offset_ms: 50,
-            drift_ppm: 0,
-            drift_anchor: Timestamp::ZERO,
-        });
+        ctx.set_clock_offset(
+            node1,
+            ClockOffset {
+                fixed_offset_ms: 50,
+                drift_ppm: 0,
+                drift_anchor: Timestamp::ZERO,
+            },
+        );
 
         // Node 2 is 30ms behind
-        ctx.set_clock_offset(node2, ClockOffset {
-            fixed_offset_ms: -30,
-            drift_ppm: 0,
-            drift_anchor: Timestamp::ZERO,
-        });
+        ctx.set_clock_offset(
+            node2,
+            ClockOffset {
+                fixed_offset_ms: -30,
+                drift_ppm: 0,
+                drift_anchor: Timestamp::ZERO,
+            },
+        );
 
         ctx.advance_to(Timestamp::from_millis(1000));
 

@@ -7,9 +7,9 @@
 //! 4. Causal ordering: If A happens-before B, all nodes see A before B
 
 use redis_sim::redis::SDS;
-use redis_sim::replication::state::{ReplicationDelta, ShardReplicaState};
-use redis_sim::replication::lattice::ReplicaId;
 use redis_sim::replication::config::ConsistencyLevel;
+use redis_sim::replication::lattice::ReplicaId;
+use redis_sim::replication::state::{ReplicationDelta, ShardReplicaState};
 
 /// Helper to convert SDS to string
 fn sds_to_string(sds: &SDS) -> String {
@@ -18,7 +18,8 @@ fn sds_to_string(sds: &SDS) -> String {
 
 /// Get value as string from state
 fn get_value(state: &ShardReplicaState, key: &str) -> Option<String> {
-    state.get_replicated(key)
+    state
+        .get_replicated(key)
         .and_then(|rv| rv.get().map(sds_to_string))
 }
 
@@ -45,8 +46,11 @@ fn test_read_your_writes() {
         let read_value = get_value(&state, "key");
         println!("After write '{}': read '{:?}'", value, read_value);
 
-        assert_eq!(read_value, Some(value.clone()),
-            "Should read the value we just wrote");
+        assert_eq!(
+            read_value,
+            Some(value.clone()),
+            "Should read the value we just wrote"
+        );
     }
 
     println!("✓ Read-your-writes preserved");
@@ -86,8 +90,11 @@ fn test_monotonic_reads() {
     println!("After applying delta1 (older): {:?}", read2);
 
     // With LWW + Lamport clocks, v2 has higher timestamp so it wins
-    assert_eq!(read2, Some("v2".to_string()),
-        "Should not regress to older value");
+    assert_eq!(
+        read2,
+        Some("v2".to_string()),
+        "Should not regress to older value"
+    );
 
     // Apply delta3 (newer) - should advance to v3
     reader.apply_remote_delta(delta3.clone());
@@ -180,8 +187,10 @@ fn test_causal_ordering_happens_before() {
     println!("Delta2 timestamp: {:?}", delta2.value.timestamp);
 
     // Verify timestamps are ordered
-    assert!(delta2.value.timestamp.time > delta1.value.timestamp.time,
-        "v2 should have higher Lamport timestamp than v1");
+    assert!(
+        delta2.value.timestamp.time > delta1.value.timestamp.time,
+        "v2 should have higher Lamport timestamp than v1"
+    );
 
     // Node2 receives deltas in wrong order
     println!("\nNode2 receives delta2 first, then delta1:");
@@ -196,8 +205,11 @@ fn test_causal_ordering_happens_before() {
     println!("  After delta1: {:?}", after_delta1);
 
     // Should still be v2 because v2 has higher timestamp
-    assert_eq!(after_delta1, Some("v2".to_string()),
-        "Causal order preserved: v2 wins over v1");
+    assert_eq!(
+        after_delta1,
+        Some("v2".to_string()),
+        "Causal order preserved: v2 wins over v1"
+    );
 
     println!("✓ Causal ordering preserved via Lamport timestamps");
 }
@@ -224,8 +236,14 @@ fn test_concurrent_writes_no_causal_order() {
     let delta2 = node2.record_write("key".to_string(), SDS::from_str("from_node2"), None);
 
     println!("Concurrent writes:");
-    println!("  Node1: 'from_node1', timestamp={:?}", delta1.value.timestamp);
-    println!("  Node2: 'from_node2', timestamp={:?}", delta2.value.timestamp);
+    println!(
+        "  Node1: 'from_node1', timestamp={:?}",
+        delta1.value.timestamp
+    );
+    println!(
+        "  Node2: 'from_node2', timestamp={:?}",
+        delta2.value.timestamp
+    );
 
     // These are concurrent - neither causally precedes the other
     // System uses LWW with replica_id as tiebreaker
@@ -244,7 +262,10 @@ fn test_concurrent_writes_no_causal_order() {
     // Both nodes should converge to the same value
     assert_eq!(val1, val2, "Concurrent writes should converge");
 
-    println!("✓ Concurrent writes converge deterministically to: {:?}", val1);
+    println!(
+        "✓ Concurrent writes converge deterministically to: {:?}",
+        val1
+    );
 }
 
 // ============================================================================
@@ -337,12 +358,17 @@ fn test_vector_clock_tracking() {
     println!("N1 write - VC: {:?}", delta1.value.vector_clock);
 
     // In causal mode, should have vector clock
-    assert!(delta1.value.vector_clock.is_some(),
-        "Causal mode should track vector clocks");
+    assert!(
+        delta1.value.vector_clock.is_some(),
+        "Causal mode should track vector clocks"
+    );
 
     // Node2 writes independently
     let delta2 = node2.record_write("key".to_string(), SDS::from_str("v2"), None);
-    println!("N2 write (independent) - VC: {:?}", delta2.value.vector_clock);
+    println!(
+        "N2 write (independent) - VC: {:?}",
+        delta2.value.vector_clock
+    );
 
     // Exchange and then write again
     node1.apply_remote_delta(delta2.clone());
@@ -350,10 +376,16 @@ fn test_vector_clock_tracking() {
 
     // Now writes should have updated vector clocks
     let delta3 = node1.record_write("key".to_string(), SDS::from_str("v3"), None);
-    println!("N1 write (after sync) - VC: {:?}", delta3.value.vector_clock);
+    println!(
+        "N1 write (after sync) - VC: {:?}",
+        delta3.value.vector_clock
+    );
 
     let delta4 = node2.record_write("key".to_string(), SDS::from_str("v4"), None);
-    println!("N2 write (after sync) - VC: {:?}", delta4.value.vector_clock);
+    println!(
+        "N2 write (after sync) - VC: {:?}",
+        delta4.value.vector_clock
+    );
 
     // Both should have vector clocks
     assert!(delta3.value.vector_clock.is_some());
@@ -379,7 +411,8 @@ fn test_causal_vs_eventual_mode() {
 
     // Same operations on both
     let causal_delta = causal_state.record_write("key".to_string(), SDS::from_str("value"), None);
-    let eventual_delta = eventual_state.record_write("key".to_string(), SDS::from_str("value"), None);
+    let eventual_delta =
+        eventual_state.record_write("key".to_string(), SDS::from_str("value"), None);
 
     println!("Causal mode:");
     println!("  Vector clock: {:?}", causal_delta.value.vector_clock);
@@ -390,10 +423,14 @@ fn test_causal_vs_eventual_mode() {
     println!("  Lamport clock: {:?}", eventual_delta.value.timestamp);
 
     // Causal should have vector clock, eventual should not
-    assert!(causal_delta.value.vector_clock.is_some(),
-        "Causal mode should have vector clock");
-    assert!(eventual_delta.value.vector_clock.is_none(),
-        "Eventual mode should not have vector clock");
+    assert!(
+        causal_delta.value.vector_clock.is_some(),
+        "Causal mode should have vector clock"
+    );
+    assert!(
+        eventual_delta.value.vector_clock.is_none(),
+        "Eventual mode should not have vector clock"
+    );
 
     // Both should have Lamport timestamps
     assert!(causal_delta.value.timestamp.time > 0);
@@ -466,7 +503,10 @@ fn test_causal_stress() {
         .map(|i| ShardReplicaState::new(ReplicaId::new(i as u64), ConsistencyLevel::Causal))
         .collect();
 
-    println!("=== Causal Stress Test ({} nodes, {} ops each) ===", num_nodes, ops_per_node);
+    println!(
+        "=== Causal Stress Test ({} nodes, {} ops each) ===",
+        num_nodes, ops_per_node
+    );
 
     let mut all_deltas: Vec<ReplicationDelta> = Vec::new();
 
@@ -500,20 +540,23 @@ fn test_causal_stress() {
     }
 
     // All nodes should converge
-    let final_values: Vec<_> = nodes.iter()
-        .map(|n| get_value(n, "shared_key"))
-        .collect();
+    let final_values: Vec<_> = nodes.iter().map(|n| get_value(n, "shared_key")).collect();
 
     let first = &final_values[0];
     for (i, val) in final_values.iter().enumerate() {
         assert_eq!(val, first, "Node {} has different value", i);
     }
 
-    println!("✓ All {} nodes converged under causal stress to: {:?}", num_nodes, first);
+    println!(
+        "✓ All {} nodes converged under causal stress to: {:?}",
+        num_nodes, first
+    );
 
     // Verify vector clocks were used
     let sample_delta = &all_deltas[all_deltas.len() - 1];
-    assert!(sample_delta.value.vector_clock.is_some(),
-        "Should have vector clocks in causal mode");
+    assert!(
+        sample_delta.value.vector_clock.is_some(),
+        "Should have vector clocks in causal mode"
+    );
     println!("✓ Vector clocks maintained throughout");
 }

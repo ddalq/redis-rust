@@ -159,12 +159,18 @@ impl CrashSimulator {
 
     /// Check if a node is crashed
     pub fn is_crashed(&self, node_id: HostId) -> bool {
-        matches!(self.node_states.get(&node_id), Some(NodeState::Crashed { .. }))
+        matches!(
+            self.node_states.get(&node_id),
+            Some(NodeState::Crashed { .. })
+        )
     }
 
     /// Check if a node is recovering
     pub fn is_recovering(&self, node_id: HostId) -> bool {
-        matches!(self.node_states.get(&node_id), Some(NodeState::Recovering { .. }))
+        matches!(
+            self.node_states.get(&node_id),
+            Some(NodeState::Recovering { .. })
+        )
     }
 
     /// Maybe crash a node based on BUGGIFY probability

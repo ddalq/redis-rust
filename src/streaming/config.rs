@@ -224,7 +224,7 @@ impl CompactionConfig {
     pub fn test() -> Self {
         CompactionConfig {
             target_segment_size: 1024, // 1KB
-            max_segments: 0, // Disable compaction worker in tests
+            max_segments: 0,           // Disable compaction worker in tests
             min_segments_to_compact: 2,
             max_segments_per_compaction: 5,
             tombstone_ttl: Duration::from_millis(100),

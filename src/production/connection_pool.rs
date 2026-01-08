@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use crossbeam::queue::ArrayQueue;
 use bytes::BytesMut;
+use crossbeam::queue::ArrayQueue;
+use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 /// Error returned when connection pool operations fail
@@ -36,7 +36,9 @@ impl ConnectionPool {
     }
 
     /// TigerStyle: Return Result instead of panicking on semaphore close
-    pub async fn acquire_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, ConnectionPoolError> {
+    pub async fn acquire_permit(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, ConnectionPoolError> {
         self.max_connections
             .clone()
             .acquire_owned()
@@ -68,11 +70,16 @@ impl BufferPoolAsync {
         for _ in 0..size {
             let _ = pool.push(BytesMut::with_capacity(buffer_capacity));
         }
-        BufferPoolAsync { pool, capacity: buffer_capacity }
+        BufferPoolAsync {
+            pool,
+            capacity: buffer_capacity,
+        }
     }
 
     pub fn acquire(&self) -> BytesMut {
-        self.pool.pop().unwrap_or_else(|| BytesMut::with_capacity(self.capacity))
+        self.pool
+            .pop()
+            .unwrap_or_else(|| BytesMut::with_capacity(self.capacity))
     }
 
     pub fn release(&self, mut buf: BytesMut) {

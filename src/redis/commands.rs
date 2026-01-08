@@ -1,8 +1,8 @@
 use super::data::*;
 use super::resp::RespValue;
 use super::resp_optimized::RespValueZeroCopy;
-use ahash::AHashMap;
 use crate::simulator::VirtualTime;
+use ahash::AHashMap;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -12,11 +12,11 @@ pub enum Command {
     Set {
         key: String,
         value: SDS,
-        ex: Option<i64>,      // EX seconds
-        px: Option<i64>,      // PX milliseconds
-        nx: bool,             // Only set if NOT exists
-        xx: bool,             // Only set if exists
-        get: bool,            // Return old value
+        ex: Option<i64>, // EX seconds
+        px: Option<i64>, // PX milliseconds
+        nx: bool,        // Only set if NOT exists
+        xx: bool,        // Only set if exists
+        get: bool,       // Return old value
     },
     Append(String, SDS),
     GetSet(String, SDS),
@@ -54,14 +54,14 @@ pub enum Command {
     LLen(String),
     LIndex(String, isize),
     LRange(String, isize, isize),
-    LSet(String, isize, SDS),              // key, index, value
-    LTrim(String, isize, isize),           // key, start, stop
-    RPopLPush(String, String),             // source, dest
+    LSet(String, isize, SDS),    // key, index, value
+    LTrim(String, isize, isize), // key, start, stop
+    RPopLPush(String, String),   // source, dest
     LMove {
         source: String,
         dest: String,
-        wherefrom: String,  // LEFT or RIGHT
-        whereto: String,    // LEFT or RIGHT
+        wherefrom: String, // LEFT or RIGHT
+        whereto: String,   // LEFT or RIGHT
     },
     // Set commands
     SAdd(String, Vec<SDS>),
@@ -84,25 +84,25 @@ pub enum Command {
     ZAdd {
         key: String,
         pairs: Vec<(f64, SDS)>,
-        nx: bool,  // Only add new elements
-        xx: bool,  // Only update existing elements
-        gt: bool,  // Only update when new score > current score
-        lt: bool,  // Only update when new score < current score
-        ch: bool,  // Return number of elements changed (not just added)
+        nx: bool, // Only add new elements
+        xx: bool, // Only update existing elements
+        gt: bool, // Only update when new score > current score
+        lt: bool, // Only update when new score < current score
+        ch: bool, // Return number of elements changed (not just added)
     },
     ZRem(String, Vec<SDS>),
     ZRange(String, isize, isize),
-    ZRevRange(String, isize, isize, bool),  // bool = WITHSCORES
+    ZRevRange(String, isize, isize, bool), // bool = WITHSCORES
     ZScore(String, SDS),
     ZRank(String, SDS),
     ZCard(String),
-    ZCount(String, String, String),  // key, min, max (strings to support -inf, +inf, exclusive)
+    ZCount(String, String, String), // key, min, max (strings to support -inf, +inf, exclusive)
     ZRangeByScore {
         key: String,
         min: String,
         max: String,
         with_scores: bool,
-        limit: Option<(isize, usize)>,  // offset, count
+        limit: Option<(isize, usize)>, // offset, count
     },
     // Scan commands
     Scan {
@@ -288,7 +288,9 @@ impl Command {
                             }
                             "EXISTS" => {
                                 if elements.len() < 3 {
-                                    return Err("SCRIPT EXISTS requires at least 1 argument".to_string());
+                                    return Err(
+                                        "SCRIPT EXISTS requires at least 1 argument".to_string()
+                                    );
                                 }
                                 let sha1s: Vec<String> = elements[2..]
                                     .iter()
@@ -351,10 +353,21 @@ impl Command {
 
                         // NX and XX are mutually exclusive
                         if nx && xx {
-                            return Err("ERR XX and NX options at the same time are not compatible".to_string());
+                            return Err(
+                                "ERR XX and NX options at the same time are not compatible"
+                                    .to_string(),
+                            );
                         }
 
-                        Ok(Command::Set { key, value, ex, px, nx, xx, get })
+                        Ok(Command::Set {
+                            key,
+                            value,
+                            ex,
+                            px,
+                            nx,
+                            xx,
+                            get,
+                        })
                     }
                     "SETEX" => {
                         if elements.len() != 4 {
@@ -363,7 +376,15 @@ impl Command {
                         let key = Self::extract_string(&elements[1])?;
                         let seconds = Self::extract_integer(&elements[2])? as i64;
                         let value = Self::extract_sds(&elements[3])?;
-                        Ok(Command::Set { key, value, ex: Some(seconds), px: None, nx: false, xx: false, get: false })
+                        Ok(Command::Set {
+                            key,
+                            value,
+                            ex: Some(seconds),
+                            px: None,
+                            nx: false,
+                            xx: false,
+                            get: false,
+                        })
                     }
                     "SETNX" => {
                         if elements.len() != 3 {
@@ -371,7 +392,15 @@ impl Command {
                         }
                         let key = Self::extract_string(&elements[1])?;
                         let value = Self::extract_sds(&elements[2])?;
-                        Ok(Command::Set { key, value, ex: None, px: None, nx: true, xx: false, get: false })
+                        Ok(Command::Set {
+                            key,
+                            value,
+                            ex: None,
+                            px: None,
+                            nx: true,
+                            xx: false,
+                            get: false,
+                        })
                     }
                     "DEL" => {
                         if elements.len() < 2 {
@@ -387,7 +416,10 @@ impl Command {
                         if elements.len() < 2 {
                             return Err("EXISTS requires at least 1 argument".to_string());
                         }
-                        let keys = elements[1..].iter().map(Self::extract_string).collect::<Result<Vec<_>, _>>()?;
+                        let keys = elements[1..]
+                            .iter()
+                            .map(Self::extract_string)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::Exists(keys))
                     }
                     "TYPE" => {
@@ -506,7 +538,10 @@ impl Command {
                         if elements.len() < 2 {
                             return Err("MGET requires at least 1 argument".to_string());
                         }
-                        let keys = elements[1..].iter().map(Self::extract_string).collect::<Result<Vec<_>, _>>()?;
+                        let keys = elements[1..]
+                            .iter()
+                            .map(Self::extract_string)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::MGet(keys))
                     }
                     "MSET" => {
@@ -527,7 +562,10 @@ impl Command {
                             return Err("LPUSH requires at least 2 arguments".to_string());
                         }
                         let key = Self::extract_string(&elements[1])?;
-                        let values = elements[2..].iter().map(Self::extract_sds).collect::<Result<Vec<_>, _>>()?;
+                        let values = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::LPush(key, values))
                     }
                     "RPUSH" => {
@@ -535,7 +573,10 @@ impl Command {
                             return Err("RPUSH requires at least 2 arguments".to_string());
                         }
                         let key = Self::extract_string(&elements[1])?;
-                        let values = elements[2..].iter().map(Self::extract_sds).collect::<Result<Vec<_>, _>>()?;
+                        let values = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::RPush(key, values))
                     }
                     "LPOP" => {
@@ -616,14 +657,22 @@ impl Command {
                         if whereto != "LEFT" && whereto != "RIGHT" {
                             return Err("LMOVE whereto must be LEFT or RIGHT".to_string());
                         }
-                        Ok(Command::LMove { source, dest, wherefrom, whereto })
+                        Ok(Command::LMove {
+                            source,
+                            dest,
+                            wherefrom,
+                            whereto,
+                        })
                     }
                     "SADD" => {
                         if elements.len() < 3 {
                             return Err("SADD requires at least 2 arguments".to_string());
                         }
                         let key = Self::extract_string(&elements[1])?;
-                        let members = elements[2..].iter().map(Self::extract_sds).collect::<Result<Vec<_>, _>>()?;
+                        let members = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::SAdd(key, members))
                     }
                     "SMEMBERS" => {
@@ -646,7 +695,10 @@ impl Command {
                             return Err("SREM requires at least 2 arguments".to_string());
                         }
                         let key = Self::extract_string(&elements[1])?;
-                        let members = elements[2..].iter().map(Self::extract_sds).collect::<Result<Vec<_>, _>>()?;
+                        let members = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::SRem(key, members))
                     }
                     "SCARD" => {
@@ -699,7 +751,10 @@ impl Command {
                             return Err("HDEL requires at least 2 arguments".to_string());
                         }
                         let key = Self::extract_string(&elements[1])?;
-                        let fields = elements[2..].iter().map(Self::extract_sds).collect::<Result<Vec<_>, _>>()?;
+                        let fields = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::HDel(key, fields))
                     }
                     "HKEYS" => {
@@ -736,7 +791,7 @@ impl Command {
                             return Err("ZADD requires key and score-member pairs".to_string());
                         }
                         let key = Self::extract_string(&elements[1])?;
-                        
+
                         // Parse optional flags (NX, XX, GT, LT, CH)
                         let mut nx = false;
                         let mut xx = false;
@@ -744,24 +799,39 @@ impl Command {
                         let mut lt = false;
                         let mut ch = false;
                         let mut i = 2;
-                        
+
                         while i < elements.len() {
                             let opt = Self::extract_string(&elements[i])?.to_uppercase();
                             match opt.as_str() {
-                                "NX" => { nx = true; i += 1; }
-                                "XX" => { xx = true; i += 1; }
-                                "GT" => { gt = true; i += 1; }
-                                "LT" => { lt = true; i += 1; }
-                                "CH" => { ch = true; i += 1; }
+                                "NX" => {
+                                    nx = true;
+                                    i += 1;
+                                }
+                                "XX" => {
+                                    xx = true;
+                                    i += 1;
+                                }
+                                "GT" => {
+                                    gt = true;
+                                    i += 1;
+                                }
+                                "LT" => {
+                                    lt = true;
+                                    i += 1;
+                                }
+                                "CH" => {
+                                    ch = true;
+                                    i += 1;
+                                }
                                 _ => break, // Start of score-member pairs
                             }
                         }
-                        
+
                         // Rest are score-member pairs
                         if (elements.len() - i) % 2 != 0 || i >= elements.len() {
                             return Err("ZADD requires score-member pairs".to_string());
                         }
-                        
+
                         let mut pairs = Vec::with_capacity((elements.len() - i) / 2);
                         while i < elements.len() {
                             let score = Self::extract_float(&elements[i])?;
@@ -769,7 +839,15 @@ impl Command {
                             pairs.push((score, member));
                             i += 2;
                         }
-                        Ok(Command::ZAdd { key, pairs, nx, xx, gt, lt, ch })
+                        Ok(Command::ZAdd {
+                            key,
+                            pairs,
+                            nx,
+                            xx,
+                            gt,
+                            lt,
+                            ch,
+                        })
                     }
                     "ZRANGE" => {
                         if elements.len() != 4 {
@@ -808,7 +886,10 @@ impl Command {
                             return Err("ZREM requires at least 2 arguments".to_string());
                         }
                         let key = Self::extract_string(&elements[1])?;
-                        let members = elements[2..].iter().map(Self::extract_sds).collect::<Result<Vec<_>, _>>()?;
+                        let members = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::ZRem(key, members))
                     }
                     "ZRANK" => {
@@ -862,7 +943,13 @@ impl Command {
                             }
                             i += 1;
                         }
-                        Ok(Command::ZRangeByScore { key, min, max, with_scores, limit })
+                        Ok(Command::ZRangeByScore {
+                            key,
+                            min,
+                            max,
+                            with_scores,
+                            limit,
+                        })
                     }
                     "SCAN" => {
                         if elements.len() < 2 {
@@ -887,7 +974,11 @@ impl Command {
                             }
                             i += 1;
                         }
-                        Ok(Command::Scan { cursor, pattern, count })
+                        Ok(Command::Scan {
+                            cursor,
+                            pattern,
+                            count,
+                        })
                     }
                     "HSCAN" => {
                         if elements.len() < 3 {
@@ -913,7 +1004,12 @@ impl Command {
                             }
                             i += 1;
                         }
-                        Ok(Command::HScan { key, cursor, pattern, count })
+                        Ok(Command::HScan {
+                            key,
+                            cursor,
+                            pattern,
+                            count,
+                        })
                     }
                     "ZSCAN" => {
                         if elements.len() < 3 {
@@ -939,7 +1035,12 @@ impl Command {
                             }
                             i += 1;
                         }
-                        Ok(Command::ZScan { key, cursor, pattern, count })
+                        Ok(Command::ZScan {
+                            key,
+                            cursor,
+                            pattern,
+                            count,
+                        })
                     }
                     _ => Ok(Command::Unknown(cmd_name)),
                 }
@@ -950,9 +1051,7 @@ impl Command {
 
     fn extract_string(value: &RespValue) -> Result<String, String> {
         match value {
-            RespValue::BulkString(Some(data)) => {
-                Ok(String::from_utf8_lossy(data).to_string())
-            }
+            RespValue::BulkString(Some(data)) => Ok(String::from_utf8_lossy(data).to_string()),
             _ => Err("Expected bulk string".to_string()),
         }
     }
@@ -1097,7 +1196,9 @@ impl Command {
                             }
                             "EXISTS" => {
                                 if elements.len() < 3 {
-                                    return Err("SCRIPT EXISTS requires at least 1 argument".to_string());
+                                    return Err(
+                                        "SCRIPT EXISTS requires at least 1 argument".to_string()
+                                    );
                                 }
                                 let sha1s: Vec<String> = elements[2..]
                                     .iter()
@@ -1110,11 +1211,15 @@ impl Command {
                         }
                     }
                     "GET" => {
-                        if elements.len() != 2 { return Err("GET requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("GET requires 1 argument".to_string());
+                        }
                         Ok(Command::Get(Self::extract_string_zc(&elements[1])?))
                     }
                     "SET" => {
-                        if elements.len() < 3 { return Err("SET requires at least 2 arguments".to_string()); }
+                        if elements.len() < 3 {
+                            return Err("SET requires at least 2 arguments".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
                         let value = Self::extract_sds_zc(&elements[2])?;
 
@@ -1155,26 +1260,59 @@ impl Command {
 
                         // NX and XX are mutually exclusive
                         if nx && xx {
-                            return Err("ERR XX and NX options at the same time are not compatible".to_string());
+                            return Err(
+                                "ERR XX and NX options at the same time are not compatible"
+                                    .to_string(),
+                            );
                         }
 
-                        Ok(Command::Set { key, value, ex, px, nx, xx, get })
+                        Ok(Command::Set {
+                            key,
+                            value,
+                            ex,
+                            px,
+                            nx,
+                            xx,
+                            get,
+                        })
                     }
                     "SETEX" => {
-                        if elements.len() != 4 { return Err("SETEX requires 3 arguments".to_string()); }
+                        if elements.len() != 4 {
+                            return Err("SETEX requires 3 arguments".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
                         let seconds = Self::extract_integer_zc(&elements[2])? as i64;
                         let value = Self::extract_sds_zc(&elements[3])?;
-                        Ok(Command::Set { key, value, ex: Some(seconds), px: None, nx: false, xx: false, get: false })
+                        Ok(Command::Set {
+                            key,
+                            value,
+                            ex: Some(seconds),
+                            px: None,
+                            nx: false,
+                            xx: false,
+                            get: false,
+                        })
                     }
                     "SETNX" => {
-                        if elements.len() != 3 { return Err("SETNX requires 2 arguments".to_string()); }
+                        if elements.len() != 3 {
+                            return Err("SETNX requires 2 arguments".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
                         let value = Self::extract_sds_zc(&elements[2])?;
-                        Ok(Command::Set { key, value, ex: None, px: None, nx: true, xx: false, get: false })
+                        Ok(Command::Set {
+                            key,
+                            value,
+                            ex: None,
+                            px: None,
+                            nx: true,
+                            xx: false,
+                            get: false,
+                        })
                     }
                     "DEL" => {
-                        if elements.len() < 2 { return Err("DEL requires at least 1 argument".to_string()); }
+                        if elements.len() < 2 {
+                            return Err("DEL requires at least 1 argument".to_string());
+                        }
                         let keys: Vec<String> = elements[1..]
                             .iter()
                             .map(Self::extract_string_zc)
@@ -1182,158 +1320,302 @@ impl Command {
                         Ok(Command::Del(keys))
                     }
                     "EXISTS" => {
-                        if elements.len() < 2 { return Err("EXISTS requires at least 1 argument".to_string()); }
-                        Ok(Command::Exists(elements[1..].iter().map(Self::extract_string_zc).collect::<Result<Vec<_>, _>>()?))
+                        if elements.len() < 2 {
+                            return Err("EXISTS requires at least 1 argument".to_string());
+                        }
+                        Ok(Command::Exists(
+                            elements[1..]
+                                .iter()
+                                .map(Self::extract_string_zc)
+                                .collect::<Result<Vec<_>, _>>()?,
+                        ))
                     }
                     "TYPE" => {
-                        if elements.len() != 2 { return Err("TYPE requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("TYPE requires 1 argument".to_string());
+                        }
                         Ok(Command::TypeOf(Self::extract_string_zc(&elements[1])?))
                     }
                     "KEYS" => {
-                        if elements.len() != 2 { return Err("KEYS requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("KEYS requires 1 argument".to_string());
+                        }
                         Ok(Command::Keys(Self::extract_string_zc(&elements[1])?))
                     }
                     "EXPIRE" => {
-                        if elements.len() != 3 { return Err("EXPIRE requires 2 arguments".to_string()); }
-                        Ok(Command::Expire(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                        if elements.len() != 3 {
+                            return Err("EXPIRE requires 2 arguments".to_string());
+                        }
+                        Ok(Command::Expire(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])? as i64,
+                        ))
                     }
                     "EXPIREAT" => {
-                        if elements.len() != 3 { return Err("EXPIREAT requires 2 arguments".to_string()); }
-                        Ok(Command::ExpireAt(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                        if elements.len() != 3 {
+                            return Err("EXPIREAT requires 2 arguments".to_string());
+                        }
+                        Ok(Command::ExpireAt(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])? as i64,
+                        ))
                     }
                     "PEXPIREAT" => {
-                        if elements.len() != 3 { return Err("PEXPIREAT requires 2 arguments".to_string()); }
-                        Ok(Command::PExpireAt(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                        if elements.len() != 3 {
+                            return Err("PEXPIREAT requires 2 arguments".to_string());
+                        }
+                        Ok(Command::PExpireAt(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])? as i64,
+                        ))
                     }
                     "TTL" => {
-                        if elements.len() != 2 { return Err("TTL requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("TTL requires 1 argument".to_string());
+                        }
                         Ok(Command::Ttl(Self::extract_string_zc(&elements[1])?))
                     }
                     "PTTL" => {
-                        if elements.len() != 2 { return Err("PTTL requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("PTTL requires 1 argument".to_string());
+                        }
                         Ok(Command::Pttl(Self::extract_string_zc(&elements[1])?))
                     }
                     "PERSIST" => {
-                        if elements.len() != 2 { return Err("PERSIST requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("PERSIST requires 1 argument".to_string());
+                        }
                         Ok(Command::Persist(Self::extract_string_zc(&elements[1])?))
                     }
                     "INCR" => {
-                        if elements.len() != 2 { return Err("INCR requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("INCR requires 1 argument".to_string());
+                        }
                         Ok(Command::Incr(Self::extract_string_zc(&elements[1])?))
                     }
                     "DECR" => {
-                        if elements.len() != 2 { return Err("DECR requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("DECR requires 1 argument".to_string());
+                        }
                         Ok(Command::Decr(Self::extract_string_zc(&elements[1])?))
                     }
                     "INCRBY" => {
-                        if elements.len() != 3 { return Err("INCRBY requires 2 arguments".to_string()); }
-                        Ok(Command::IncrBy(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                        if elements.len() != 3 {
+                            return Err("INCRBY requires 2 arguments".to_string());
+                        }
+                        Ok(Command::IncrBy(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])? as i64,
+                        ))
                     }
                     "DECRBY" => {
-                        if elements.len() != 3 { return Err("DECRBY requires 2 arguments".to_string()); }
-                        Ok(Command::DecrBy(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])? as i64))
+                        if elements.len() != 3 {
+                            return Err("DECRBY requires 2 arguments".to_string());
+                        }
+                        Ok(Command::DecrBy(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])? as i64,
+                        ))
                     }
                     "APPEND" => {
-                        if elements.len() != 3 { return Err("APPEND requires 2 arguments".to_string()); }
-                        Ok(Command::Append(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("APPEND requires 2 arguments".to_string());
+                        }
+                        Ok(Command::Append(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_sds_zc(&elements[2])?,
+                        ))
                     }
                     "GETSET" => {
-                        if elements.len() != 3 { return Err("GETSET requires 2 arguments".to_string()); }
-                        Ok(Command::GetSet(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("GETSET requires 2 arguments".to_string());
+                        }
+                        Ok(Command::GetSet(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_sds_zc(&elements[2])?,
+                        ))
                     }
                     "STRLEN" => {
-                        if elements.len() != 2 { return Err("STRLEN requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("STRLEN requires 1 argument".to_string());
+                        }
                         Ok(Command::StrLen(Self::extract_string_zc(&elements[1])?))
                     }
                     "MGET" => {
-                        if elements.len() < 2 { return Err("MGET requires at least 1 argument".to_string()); }
-                        Ok(Command::MGet(elements[1..].iter().map(Self::extract_string_zc).collect::<Result<Vec<_>, _>>()?))
+                        if elements.len() < 2 {
+                            return Err("MGET requires at least 1 argument".to_string());
+                        }
+                        Ok(Command::MGet(
+                            elements[1..]
+                                .iter()
+                                .map(Self::extract_string_zc)
+                                .collect::<Result<Vec<_>, _>>()?,
+                        ))
                     }
                     "MSET" => {
-                        if elements.len() < 3 || (elements.len() - 1) % 2 != 0 { return Err("MSET requires key-value pairs".to_string()); }
+                        if elements.len() < 3 || (elements.len() - 1) % 2 != 0 {
+                            return Err("MSET requires key-value pairs".to_string());
+                        }
                         // Pre-allocate capacity (Abseil Tip #19)
                         let mut pairs = Vec::with_capacity((elements.len() - 1) / 2);
                         for i in (1..elements.len()).step_by(2) {
-                            pairs.push((Self::extract_string_zc(&elements[i])?, Self::extract_sds_zc(&elements[i + 1])?));
+                            pairs.push((
+                                Self::extract_string_zc(&elements[i])?,
+                                Self::extract_sds_zc(&elements[i + 1])?,
+                            ));
                         }
                         Ok(Command::MSet(pairs))
                     }
                     "LPUSH" => {
-                        if elements.len() < 3 { return Err("LPUSH requires key and values".to_string()); }
+                        if elements.len() < 3 {
+                            return Err("LPUSH requires key and values".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
-                        let values = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        let values = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds_zc)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::LPush(key, values))
                     }
                     "RPUSH" => {
-                        if elements.len() < 3 { return Err("RPUSH requires key and values".to_string()); }
+                        if elements.len() < 3 {
+                            return Err("RPUSH requires key and values".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
-                        let values = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        let values = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds_zc)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::RPush(key, values))
                     }
                     "LPOP" => {
-                        if elements.len() != 2 { return Err("LPOP requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("LPOP requires 1 argument".to_string());
+                        }
                         Ok(Command::LPop(Self::extract_string_zc(&elements[1])?))
                     }
                     "RPOP" => {
-                        if elements.len() != 2 { return Err("RPOP requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("RPOP requires 1 argument".to_string());
+                        }
                         Ok(Command::RPop(Self::extract_string_zc(&elements[1])?))
                     }
                     "LRANGE" => {
-                        if elements.len() != 4 { return Err("LRANGE requires 3 arguments".to_string()); }
-                        Ok(Command::LRange(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])?, Self::extract_integer_zc(&elements[3])?))
+                        if elements.len() != 4 {
+                            return Err("LRANGE requires 3 arguments".to_string());
+                        }
+                        Ok(Command::LRange(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])?,
+                            Self::extract_integer_zc(&elements[3])?,
+                        ))
                     }
                     "LLEN" => {
-                        if elements.len() != 2 { return Err("LLEN requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("LLEN requires 1 argument".to_string());
+                        }
                         Ok(Command::LLen(Self::extract_string_zc(&elements[1])?))
                     }
                     "LINDEX" => {
-                        if elements.len() != 3 { return Err("LINDEX requires 2 arguments".to_string()); }
-                        Ok(Command::LIndex(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("LINDEX requires 2 arguments".to_string());
+                        }
+                        Ok(Command::LIndex(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])?,
+                        ))
                     }
                     "LSET" => {
-                        if elements.len() != 4 { return Err("LSET requires 3 arguments".to_string()); }
-                        Ok(Command::LSet(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])?, Self::extract_sds_zc(&elements[3])?))
+                        if elements.len() != 4 {
+                            return Err("LSET requires 3 arguments".to_string());
+                        }
+                        Ok(Command::LSet(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])?,
+                            Self::extract_sds_zc(&elements[3])?,
+                        ))
                     }
                     "LTRIM" => {
-                        if elements.len() != 4 { return Err("LTRIM requires 3 arguments".to_string()); }
-                        Ok(Command::LTrim(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])?, Self::extract_integer_zc(&elements[3])?))
+                        if elements.len() != 4 {
+                            return Err("LTRIM requires 3 arguments".to_string());
+                        }
+                        Ok(Command::LTrim(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])?,
+                            Self::extract_integer_zc(&elements[3])?,
+                        ))
                     }
                     "RPOPLPUSH" => {
-                        if elements.len() != 3 { return Err("RPOPLPUSH requires 2 arguments".to_string()); }
-                        Ok(Command::RPopLPush(Self::extract_string_zc(&elements[1])?, Self::extract_string_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("RPOPLPUSH requires 2 arguments".to_string());
+                        }
+                        Ok(Command::RPopLPush(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_string_zc(&elements[2])?,
+                        ))
                     }
                     "LMOVE" => {
-                        if elements.len() != 5 { return Err("LMOVE requires 4 arguments".to_string()); }
+                        if elements.len() != 5 {
+                            return Err("LMOVE requires 4 arguments".to_string());
+                        }
                         let source = Self::extract_string_zc(&elements[1])?;
                         let dest = Self::extract_string_zc(&elements[2])?;
                         let wherefrom = Self::extract_string_zc(&elements[3])?.to_uppercase();
                         let whereto = Self::extract_string_zc(&elements[4])?.to_uppercase();
-                        if wherefrom != "LEFT" && wherefrom != "RIGHT" { return Err("LMOVE wherefrom must be LEFT or RIGHT".to_string()); }
-                        if whereto != "LEFT" && whereto != "RIGHT" { return Err("LMOVE whereto must be LEFT or RIGHT".to_string()); }
-                        Ok(Command::LMove { source, dest, wherefrom, whereto })
+                        if wherefrom != "LEFT" && wherefrom != "RIGHT" {
+                            return Err("LMOVE wherefrom must be LEFT or RIGHT".to_string());
+                        }
+                        if whereto != "LEFT" && whereto != "RIGHT" {
+                            return Err("LMOVE whereto must be LEFT or RIGHT".to_string());
+                        }
+                        Ok(Command::LMove {
+                            source,
+                            dest,
+                            wherefrom,
+                            whereto,
+                        })
                     }
                     "SADD" => {
-                        if elements.len() < 3 { return Err("SADD requires key and members".to_string()); }
+                        if elements.len() < 3 {
+                            return Err("SADD requires key and members".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
-                        let members = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        let members = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds_zc)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::SAdd(key, members))
                     }
                     "SMEMBERS" => {
-                        if elements.len() != 2 { return Err("SMEMBERS requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("SMEMBERS requires 1 argument".to_string());
+                        }
                         Ok(Command::SMembers(Self::extract_string_zc(&elements[1])?))
                     }
                     "SISMEMBER" => {
-                        if elements.len() != 3 { return Err("SISMEMBER requires 2 arguments".to_string()); }
-                        Ok(Command::SIsMember(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("SISMEMBER requires 2 arguments".to_string());
+                        }
+                        Ok(Command::SIsMember(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_sds_zc(&elements[2])?,
+                        ))
                     }
                     "SREM" => {
-                        if elements.len() < 3 { return Err("SREM requires at least 2 arguments".to_string()); }
+                        if elements.len() < 3 {
+                            return Err("SREM requires at least 2 arguments".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
-                        let members = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        let members = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds_zc)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::SRem(key, members))
                     }
                     "SCARD" => {
-                        if elements.len() != 2 { return Err("SCARD requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("SCARD requires 1 argument".to_string());
+                        }
                         Ok(Command::SCard(Self::extract_string_zc(&elements[1])?))
                     }
                     "HSET" => {
@@ -1351,43 +1633,74 @@ impl Command {
                         Ok(Command::HSet(key, pairs))
                     }
                     "HGET" => {
-                        if elements.len() != 3 { return Err("HGET requires 2 arguments".to_string()); }
-                        Ok(Command::HGet(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("HGET requires 2 arguments".to_string());
+                        }
+                        Ok(Command::HGet(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_sds_zc(&elements[2])?,
+                        ))
                     }
                     "HGETALL" => {
-                        if elements.len() != 2 { return Err("HGETALL requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("HGETALL requires 1 argument".to_string());
+                        }
                         Ok(Command::HGetAll(Self::extract_string_zc(&elements[1])?))
                     }
                     "HINCRBY" => {
-                        if elements.len() != 4 { return Err("HINCRBY requires 3 arguments".to_string()); }
-                        Ok(Command::HIncrBy(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?, Self::extract_i64_zc(&elements[3])?))
+                        if elements.len() != 4 {
+                            return Err("HINCRBY requires 3 arguments".to_string());
+                        }
+                        Ok(Command::HIncrBy(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_sds_zc(&elements[2])?,
+                            Self::extract_i64_zc(&elements[3])?,
+                        ))
                     }
                     "HDEL" => {
-                        if elements.len() < 3 { return Err("HDEL requires at least 2 arguments".to_string()); }
+                        if elements.len() < 3 {
+                            return Err("HDEL requires at least 2 arguments".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
-                        let fields = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        let fields = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds_zc)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::HDel(key, fields))
                     }
                     "HKEYS" => {
-                        if elements.len() != 2 { return Err("HKEYS requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("HKEYS requires 1 argument".to_string());
+                        }
                         Ok(Command::HKeys(Self::extract_string_zc(&elements[1])?))
                     }
                     "HVALS" => {
-                        if elements.len() != 2 { return Err("HVALS requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("HVALS requires 1 argument".to_string());
+                        }
                         Ok(Command::HVals(Self::extract_string_zc(&elements[1])?))
                     }
                     "HLEN" => {
-                        if elements.len() != 2 { return Err("HLEN requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("HLEN requires 1 argument".to_string());
+                        }
                         Ok(Command::HLen(Self::extract_string_zc(&elements[1])?))
                     }
                     "HEXISTS" => {
-                        if elements.len() != 3 { return Err("HEXISTS requires 2 arguments".to_string()); }
-                        Ok(Command::HExists(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("HEXISTS requires 2 arguments".to_string());
+                        }
+                        Ok(Command::HExists(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_sds_zc(&elements[2])?,
+                        ))
                     }
                     "ZADD" => {
-                        if elements.len() < 4 { return Err("ZADD requires key and score-member pairs".to_string()); }
+                        if elements.len() < 4 {
+                            return Err("ZADD requires key and score-member pairs".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
-                        
+
                         // Parse optional flags (NX, XX, GT, LT, CH)
                         let mut nx = false;
                         let mut xx = false;
@@ -1395,36 +1708,70 @@ impl Command {
                         let mut lt = false;
                         let mut ch = false;
                         let mut i = 2;
-                        
+
                         while i < elements.len() {
                             let opt = Self::extract_string_zc(&elements[i])?.to_uppercase();
                             match opt.as_str() {
-                                "NX" => { nx = true; i += 1; }
-                                "XX" => { xx = true; i += 1; }
-                                "GT" => { gt = true; i += 1; }
-                                "LT" => { lt = true; i += 1; }
-                                "CH" => { ch = true; i += 1; }
+                                "NX" => {
+                                    nx = true;
+                                    i += 1;
+                                }
+                                "XX" => {
+                                    xx = true;
+                                    i += 1;
+                                }
+                                "GT" => {
+                                    gt = true;
+                                    i += 1;
+                                }
+                                "LT" => {
+                                    lt = true;
+                                    i += 1;
+                                }
+                                "CH" => {
+                                    ch = true;
+                                    i += 1;
+                                }
                                 _ => break,
                             }
                         }
-                        
+
                         if (elements.len() - i) % 2 != 0 || i >= elements.len() {
                             return Err("ZADD requires score-member pairs".to_string());
                         }
-                        
+
                         let mut pairs = Vec::with_capacity((elements.len() - i) / 2);
                         while i < elements.len() {
-                            pairs.push((Self::extract_float_zc(&elements[i])?, Self::extract_sds_zc(&elements[i + 1])?));
+                            pairs.push((
+                                Self::extract_float_zc(&elements[i])?,
+                                Self::extract_sds_zc(&elements[i + 1])?,
+                            ));
                             i += 2;
                         }
-                        Ok(Command::ZAdd { key, pairs, nx, xx, gt, lt, ch })
+                        Ok(Command::ZAdd {
+                            key,
+                            pairs,
+                            nx,
+                            xx,
+                            gt,
+                            lt,
+                            ch,
+                        })
                     }
                     "ZRANGE" => {
-                        if elements.len() != 4 { return Err("ZRANGE requires 3 arguments".to_string()); }
-                        Ok(Command::ZRange(Self::extract_string_zc(&elements[1])?, Self::extract_integer_zc(&elements[2])?, Self::extract_integer_zc(&elements[3])?))
+                        if elements.len() != 4 {
+                            return Err("ZRANGE requires 3 arguments".to_string());
+                        }
+                        Ok(Command::ZRange(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_integer_zc(&elements[2])?,
+                            Self::extract_integer_zc(&elements[3])?,
+                        ))
                     }
                     "ZREVRANGE" => {
-                        if elements.len() < 4 || elements.len() > 5 { return Err("ZREVRANGE requires 3 or 4 arguments".to_string()); }
+                        if elements.len() < 4 || elements.len() > 5 {
+                            return Err("ZREVRANGE requires 3 or 4 arguments".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
                         let start = Self::extract_integer_zc(&elements[2])?;
                         let stop = Self::extract_integer_zc(&elements[3])?;
@@ -1436,29 +1783,54 @@ impl Command {
                         Ok(Command::ZRevRange(key, start, stop, with_scores))
                     }
                     "ZSCORE" => {
-                        if elements.len() != 3 { return Err("ZSCORE requires 2 arguments".to_string()); }
-                        Ok(Command::ZScore(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("ZSCORE requires 2 arguments".to_string());
+                        }
+                        Ok(Command::ZScore(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_sds_zc(&elements[2])?,
+                        ))
                     }
                     "ZREM" => {
-                        if elements.len() < 3 { return Err("ZREM requires at least 2 arguments".to_string()); }
+                        if elements.len() < 3 {
+                            return Err("ZREM requires at least 2 arguments".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
-                        let members = elements[2..].iter().map(Self::extract_sds_zc).collect::<Result<Vec<_>, _>>()?;
+                        let members = elements[2..]
+                            .iter()
+                            .map(Self::extract_sds_zc)
+                            .collect::<Result<Vec<_>, _>>()?;
                         Ok(Command::ZRem(key, members))
                     }
                     "ZRANK" => {
-                        if elements.len() != 3 { return Err("ZRANK requires 2 arguments".to_string()); }
-                        Ok(Command::ZRank(Self::extract_string_zc(&elements[1])?, Self::extract_sds_zc(&elements[2])?))
+                        if elements.len() != 3 {
+                            return Err("ZRANK requires 2 arguments".to_string());
+                        }
+                        Ok(Command::ZRank(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_sds_zc(&elements[2])?,
+                        ))
                     }
                     "ZCARD" => {
-                        if elements.len() != 2 { return Err("ZCARD requires 1 argument".to_string()); }
+                        if elements.len() != 2 {
+                            return Err("ZCARD requires 1 argument".to_string());
+                        }
                         Ok(Command::ZCard(Self::extract_string_zc(&elements[1])?))
                     }
                     "ZCOUNT" => {
-                        if elements.len() != 4 { return Err("ZCOUNT requires 3 arguments".to_string()); }
-                        Ok(Command::ZCount(Self::extract_string_zc(&elements[1])?, Self::extract_string_zc(&elements[2])?, Self::extract_string_zc(&elements[3])?))
+                        if elements.len() != 4 {
+                            return Err("ZCOUNT requires 3 arguments".to_string());
+                        }
+                        Ok(Command::ZCount(
+                            Self::extract_string_zc(&elements[1])?,
+                            Self::extract_string_zc(&elements[2])?,
+                            Self::extract_string_zc(&elements[3])?,
+                        ))
                     }
                     "ZRANGEBYSCORE" => {
-                        if elements.len() < 4 { return Err("ZRANGEBYSCORE requires at least 3 arguments".to_string()); }
+                        if elements.len() < 4 {
+                            return Err("ZRANGEBYSCORE requires at least 3 arguments".to_string());
+                        }
                         let key = Self::extract_string_zc(&elements[1])?;
                         let min = Self::extract_string_zc(&elements[2])?;
                         let max = Self::extract_string_zc(&elements[3])?;
@@ -1470,9 +1842,12 @@ impl Command {
                             match opt.as_str() {
                                 "WITHSCORES" => with_scores = true,
                                 "LIMIT" => {
-                                    if i + 2 >= elements.len() { return Err("LIMIT requires offset and count".to_string()); }
+                                    if i + 2 >= elements.len() {
+                                        return Err("LIMIT requires offset and count".to_string());
+                                    }
                                     let offset = Self::extract_integer_zc(&elements[i + 1])?;
-                                    let count = Self::extract_integer_zc(&elements[i + 2])? as usize;
+                                    let count =
+                                        Self::extract_integer_zc(&elements[i + 2])? as usize;
                                     limit = Some((offset, count));
                                     i += 2;
                                 }
@@ -1480,7 +1855,13 @@ impl Command {
                             }
                             i += 1;
                         }
-                        Ok(Command::ZRangeByScore { key, min, max, with_scores, limit })
+                        Ok(Command::ZRangeByScore {
+                            key,
+                            min,
+                            max,
+                            with_scores,
+                            limit,
+                        })
                     }
                     "SCAN" => {
                         if elements.len() < 2 {
@@ -1505,7 +1886,11 @@ impl Command {
                             }
                             i += 1;
                         }
-                        Ok(Command::Scan { cursor, pattern, count })
+                        Ok(Command::Scan {
+                            cursor,
+                            pattern,
+                            count,
+                        })
                     }
                     "HSCAN" => {
                         if elements.len() < 3 {
@@ -1531,7 +1916,12 @@ impl Command {
                             }
                             i += 1;
                         }
-                        Ok(Command::HScan { key, cursor, pattern, count })
+                        Ok(Command::HScan {
+                            key,
+                            cursor,
+                            pattern,
+                            count,
+                        })
                     }
                     "ZSCAN" => {
                         if elements.len() < 3 {
@@ -1557,7 +1947,12 @@ impl Command {
                             }
                             i += 1;
                         }
-                        Ok(Command::ZScan { key, cursor, pattern, count })
+                        Ok(Command::ZScan {
+                            key,
+                            cursor,
+                            pattern,
+                            count,
+                        })
                     }
                     _ => Ok(Command::Unknown(cmd_name)),
                 }
@@ -1568,7 +1963,9 @@ impl Command {
 
     fn extract_string_zc(value: &RespValueZeroCopy) -> Result<String, String> {
         match value {
-            RespValueZeroCopy::BulkString(Some(data)) => Ok(String::from_utf8_lossy(data).to_string()),
+            RespValueZeroCopy::BulkString(Some(data)) => {
+                Ok(String::from_utf8_lossy(data).to_string())
+            }
             _ => Err("Expected bulk string".to_string()),
         }
     }
@@ -1636,7 +2033,7 @@ pub struct CommandExecutor {
     // Transaction state
     in_transaction: bool,
     queued_commands: Vec<Command>,
-    watched_keys: AHashMap<String, Option<Value>>,  // key -> value at watch time
+    watched_keys: AHashMap<String, Option<Value>>, // key -> value at watch time
     // Lua scripting - local cache for single-shard mode
     script_cache: super::lua::ScriptCache,
     // Shared script cache for multi-shard mode (all shards share one cache)
@@ -1646,76 +2043,121 @@ pub struct CommandExecutor {
 impl Command {
     /// Returns true if this command only reads data (no mutations)
     pub fn is_read_only(&self) -> bool {
-        matches!(self,
-            Command::Get(_) |
-            Command::StrLen(_) |
-            Command::MGet(_) |
-            Command::Exists(_) |
-            Command::TypeOf(_) |
-            Command::Keys(_) |
-            Command::Ttl(_) |
-            Command::Pttl(_) |
-            Command::LLen(_) |
-            Command::LIndex(_, _) |
-            Command::LRange(_, _, _) |
-            Command::SMembers(_) |
-            Command::SIsMember(_, _) |
-            Command::SCard(_) |
-            Command::HGet(_, _) |
-            Command::HGetAll(_) |
-            Command::HKeys(_) |
-            Command::HVals(_) |
-            Command::HLen(_) |
-            Command::HExists(_, _) |
-            Command::ZRange(_, _, _) |
-            Command::ZRevRange(_, _, _, _) |
-            Command::ZScore(_, _) |
-            Command::ZRank(_, _) |
-            Command::ZCard(_) |
-            Command::ZCount(_, _, _) |
-            Command::ZRangeByScore { .. } |
-            Command::Scan { .. } |
-            Command::HScan { .. } |
-            Command::ZScan { .. } |
-            Command::Info |
-            Command::Ping
+        matches!(
+            self,
+            Command::Get(_)
+                | Command::StrLen(_)
+                | Command::MGet(_)
+                | Command::Exists(_)
+                | Command::TypeOf(_)
+                | Command::Keys(_)
+                | Command::Ttl(_)
+                | Command::Pttl(_)
+                | Command::LLen(_)
+                | Command::LIndex(_, _)
+                | Command::LRange(_, _, _)
+                | Command::SMembers(_)
+                | Command::SIsMember(_, _)
+                | Command::SCard(_)
+                | Command::HGet(_, _)
+                | Command::HGetAll(_)
+                | Command::HKeys(_)
+                | Command::HVals(_)
+                | Command::HLen(_)
+                | Command::HExists(_, _)
+                | Command::ZRange(_, _, _)
+                | Command::ZRevRange(_, _, _, _)
+                | Command::ZScore(_, _)
+                | Command::ZRank(_, _)
+                | Command::ZCard(_)
+                | Command::ZCount(_, _, _)
+                | Command::ZRangeByScore { .. }
+                | Command::Scan { .. }
+                | Command::HScan { .. }
+                | Command::ZScan { .. }
+                | Command::Info
+                | Command::Ping
         )
     }
-    
+
     /// Returns the key(s) this command operates on (for sharding)
     pub fn get_primary_key(&self) -> Option<&str> {
         match self {
-            Command::Get(k) | Command::Set { key: k, .. } | Command::TypeOf(k) |
-            Command::Expire(k, _) | Command::ExpireAt(k, _) | Command::PExpireAt(k, _) |
-            Command::Ttl(k) | Command::Pttl(k) | Command::Persist(k) |
-            Command::Incr(k) | Command::Decr(k) | Command::IncrBy(k, _) |
-            Command::DecrBy(k, _) | Command::Append(k, _) | Command::GetSet(k, _) |
-            Command::StrLen(k) |
-            Command::LPush(k, _) | Command::RPush(k, _) | Command::LPop(k) |
-            Command::RPop(k) | Command::LLen(k) | Command::LIndex(k, _) | Command::LRange(k, _, _) |
-            Command::LSet(k, _, _) | Command::LTrim(k, _, _) |
-            Command::RPopLPush(k, _) | Command::LMove { source: k, .. } |
-            Command::SAdd(k, _) | Command::SRem(k, _) | Command::SMembers(k) |
-            Command::SIsMember(k, _) | Command::SCard(k) |
-            Command::HSet(k, _) | Command::HGet(k, _) | Command::HDel(k, _) |
-            Command::HGetAll(k) | Command::HKeys(k) | Command::HVals(k) |
-            Command::HLen(k) | Command::HExists(k, _) | Command::HIncrBy(k, _, _) |
-            Command::ZAdd { key: k, .. } | Command::ZRem(k, _) | Command::ZRange(k, _, _) |
-            Command::ZRevRange(k, _, _, _) | Command::ZScore(k, _) |
-            Command::ZRank(k, _) | Command::ZCard(k) | Command::ZCount(k, _, _) |
-            Command::ZRangeByScore { key: k, .. } |
-            Command::HScan { key: k, .. } | Command::ZScan { key: k, .. } => Some(k.as_str()),
+            Command::Get(k)
+            | Command::Set { key: k, .. }
+            | Command::TypeOf(k)
+            | Command::Expire(k, _)
+            | Command::ExpireAt(k, _)
+            | Command::PExpireAt(k, _)
+            | Command::Ttl(k)
+            | Command::Pttl(k)
+            | Command::Persist(k)
+            | Command::Incr(k)
+            | Command::Decr(k)
+            | Command::IncrBy(k, _)
+            | Command::DecrBy(k, _)
+            | Command::Append(k, _)
+            | Command::GetSet(k, _)
+            | Command::StrLen(k)
+            | Command::LPush(k, _)
+            | Command::RPush(k, _)
+            | Command::LPop(k)
+            | Command::RPop(k)
+            | Command::LLen(k)
+            | Command::LIndex(k, _)
+            | Command::LRange(k, _, _)
+            | Command::LSet(k, _, _)
+            | Command::LTrim(k, _, _)
+            | Command::RPopLPush(k, _)
+            | Command::LMove { source: k, .. }
+            | Command::SAdd(k, _)
+            | Command::SRem(k, _)
+            | Command::SMembers(k)
+            | Command::SIsMember(k, _)
+            | Command::SCard(k)
+            | Command::HSet(k, _)
+            | Command::HGet(k, _)
+            | Command::HDel(k, _)
+            | Command::HGetAll(k)
+            | Command::HKeys(k)
+            | Command::HVals(k)
+            | Command::HLen(k)
+            | Command::HExists(k, _)
+            | Command::HIncrBy(k, _, _)
+            | Command::ZAdd { key: k, .. }
+            | Command::ZRem(k, _)
+            | Command::ZRange(k, _, _)
+            | Command::ZRevRange(k, _, _, _)
+            | Command::ZScore(k, _)
+            | Command::ZRank(k, _)
+            | Command::ZCard(k)
+            | Command::ZCount(k, _, _)
+            | Command::ZRangeByScore { key: k, .. }
+            | Command::HScan { key: k, .. }
+            | Command::ZScan { key: k, .. } => Some(k.as_str()),
             Command::Del(keys) | Command::Exists(keys) => keys.first().map(|s| s.as_str()),
             Command::MGet(keys) => keys.first().map(|s| s.as_str()),
             Command::MSet(pairs) => pairs.first().map(|(k, _)| k.as_str()),
             Command::BatchSet(pairs) => pairs.first().map(|(k, _)| k.as_str()),
             Command::BatchGet(keys) => keys.first().map(|s| s.as_str()),
             Command::Watch(keys) => keys.first().map(|s| s.as_str()),
-            Command::Eval { keys, .. } | Command::EvalSha { keys, .. } => keys.first().map(|s| s.as_str()),
-            Command::Scan { .. } | Command::Keys(_) | Command::FlushDb | Command::FlushAll |
-            Command::Multi | Command::Exec | Command::Discard | Command::Unwatch |
-            Command::ScriptLoad(_) | Command::ScriptExists(_) | Command::ScriptFlush |
-            Command::Info | Command::Ping | Command::Unknown(_) => None,
+            Command::Eval { keys, .. } | Command::EvalSha { keys, .. } => {
+                keys.first().map(|s| s.as_str())
+            }
+            Command::Scan { .. }
+            | Command::Keys(_)
+            | Command::FlushDb
+            | Command::FlushAll
+            | Command::Multi
+            | Command::Exec
+            | Command::Discard
+            | Command::Unwatch
+            | Command::ScriptLoad(_)
+            | Command::ScriptExists(_)
+            | Command::ScriptFlush
+            | Command::Info
+            | Command::Ping
+            | Command::Unknown(_) => None,
         }
     }
 
@@ -1819,9 +2261,9 @@ impl CommandExecutor {
             shared_script_cache: None,
         }
     }
-    
+
     /// Create a new CommandExecutor with a shared script cache
-    /// 
+    ///
     /// This is used in multi-shard mode to ensure all shards share
     /// the same script cache, allowing SCRIPT LOAD on any shard to
     /// make scripts available on all shards.
@@ -1841,14 +2283,14 @@ impl CommandExecutor {
             shared_script_cache: Some(shared_cache),
         }
     }
-    
+
     /// Set the shared script cache (for updating after creation)
     pub fn set_shared_script_cache(&mut self, shared_cache: super::lua::SharedScriptCache) {
         self.shared_script_cache = Some(shared_cache);
     }
-    
+
     // Helper methods for script cache operations that check shared cache first
-    
+
     /// Cache a script and return its SHA1
     fn cache_script_internal(&mut self, script: &str) -> String {
         if let Some(ref shared) = self.shared_script_cache {
@@ -1857,7 +2299,7 @@ impl CommandExecutor {
             self.script_cache.cache_script(script)
         }
     }
-    
+
     /// Get a script by SHA1
     fn get_script_internal(&self, sha1: &str) -> Option<String> {
         if let Some(ref shared) = self.shared_script_cache {
@@ -1866,7 +2308,7 @@ impl CommandExecutor {
             self.script_cache.get_script(sha1).cloned()
         }
     }
-    
+
     /// Check if a script exists
     fn has_script_internal(&self, sha1: &str) -> bool {
         if let Some(ref shared) = self.shared_script_cache {
@@ -1875,7 +2317,7 @@ impl CommandExecutor {
             self.script_cache.has_script(sha1)
         }
     }
-    
+
     /// Flush all scripts
     fn flush_scripts_internal(&mut self) {
         if let Some(ref shared) = self.shared_script_cache {
@@ -1884,7 +2326,7 @@ impl CommandExecutor {
             self.script_cache.flush()
         }
     }
-    
+
     pub fn set_simulation_start_epoch(&mut self, epoch: i64) {
         self.simulation_start_epoch = epoch;
     }
@@ -1893,11 +2335,11 @@ impl CommandExecutor {
         self.current_time = time;
         self.evict_expired_keys();
     }
-    
+
     pub fn get_current_time(&self) -> VirtualTime {
         self.current_time
     }
-    
+
     /// Update time without evicting keys (for read-only operations)
     pub fn update_time_readonly(&mut self, time: VirtualTime) {
         self.current_time = time;
@@ -1918,7 +2360,9 @@ impl CommandExecutor {
         self.commands_processed += 1;
         match self.get_value(key) {
             Some(Value::String(s)) => RespValue::BulkString(Some(s.as_bytes().to_vec())),
-            Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+            Some(_) => RespValue::Error(
+                "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+            ),
             None => RespValue::BulkString(None),
         }
     }
@@ -1928,7 +2372,8 @@ impl CommandExecutor {
     #[inline]
     pub fn set_direct(&mut self, key: &str, value: &[u8]) -> RespValue {
         self.commands_processed += 1;
-        self.data.insert(key.to_string(), Value::String(SDS::new(value.to_vec())));
+        self.data
+            .insert(key.to_string(), Value::String(SDS::new(value.to_vec())));
         self.expirations.remove(key);
         self.access_times.insert(key.to_string(), self.current_time);
         RespValue::SimpleString("OK".to_string())
@@ -1945,7 +2390,8 @@ impl CommandExecutor {
 
         self.current_time = current_time;
 
-        let expired_keys: Vec<String> = self.expirations
+        let expired_keys: Vec<String> = self
+            .expirations
             .iter()
             .filter(|(_, &exp_time)| exp_time <= self.current_time)
             .map(|(k, _)| k.clone())
@@ -1988,7 +2434,8 @@ impl CommandExecutor {
         #[cfg(debug_assertions)]
         let pre_data_len = self.data.len();
 
-        let expired_keys: Vec<String> = self.expirations
+        let expired_keys: Vec<String> = self
+            .expirations
             .iter()
             .filter(|(_, &exp_time)| exp_time <= self.current_time)
             .map(|(k, _)| k.clone())
@@ -2020,7 +2467,7 @@ impl CommandExecutor {
             }
         }
     }
-    
+
     /// Execute a read-only command (can be called with just &self for some operations)
     /// Note: This still requires &mut self due to access_times updates, but is semantically read-only
     pub fn execute_read(&mut self, cmd: &Command) -> RespValue {
@@ -2043,13 +2490,16 @@ impl CommandExecutor {
                 }
             }
             Command::Exists(keys) => {
-                let count = keys.iter().filter(|k| {
-                    !self.is_expired(k) && self.data.contains_key(*k)
-                }).count();
+                let count = keys
+                    .iter()
+                    .filter(|k| !self.is_expired(k) && self.data.contains_key(*k))
+                    .count();
                 RespValue::Integer(count as i64)
             }
             Command::Keys(pattern) => {
-                let matching: Vec<RespValue> = self.data.keys()
+                let matching: Vec<RespValue> = self
+                    .data
+                    .keys()
                     .filter(|k| !self.is_expired(k) && self.matches_glob_pattern(k, pattern))
                     .map(|k| RespValue::BulkString(Some(k.as_bytes().to_vec())))
                     .collect();
@@ -2107,7 +2557,7 @@ impl CommandExecutor {
 
         match cmd {
             Command::Ping => RespValue::SimpleString("PONG".to_string()),
-            
+
             Command::Info => {
                 let info = format!(
                     "# Server\r\n\
@@ -2125,25 +2575,37 @@ impl CommandExecutor {
                 );
                 RespValue::BulkString(Some(info.into_bytes()))
             }
-            
-            Command::Get(key) => {
-                match self.get_value(key) {
-                    Some(Value::String(s)) => RespValue::BulkString(Some(s.as_bytes().to_vec())),
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => RespValue::BulkString(None),
-                }
-            }
-            
-            Command::Set { key, value, ex, px, nx, xx, get } => {
+
+            Command::Get(key) => match self.get_value(key) {
+                Some(Value::String(s)) => RespValue::BulkString(Some(s.as_bytes().to_vec())),
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::BulkString(None),
+            },
+
+            Command::Set {
+                key,
+                value,
+                ex,
+                px,
+                nx,
+                xx,
+                get,
+            } => {
                 // Validate expiration values
                 if let Some(seconds) = ex {
                     if *seconds <= 0 {
-                        return RespValue::Error("ERR invalid expire time in 'set' command".to_string());
+                        return RespValue::Error(
+                            "ERR invalid expire time in 'set' command".to_string(),
+                        );
                     }
                 }
                 if let Some(millis) = px {
                     if *millis <= 0 {
-                        return RespValue::Error("ERR invalid expire time in 'set' command".to_string());
+                        return RespValue::Error(
+                            "ERR invalid expire time in 'set' command".to_string(),
+                        );
                     }
                 }
 
@@ -2179,10 +2641,12 @@ impl CommandExecutor {
 
                 // Handle expiration
                 if let Some(seconds) = ex {
-                    let expiration = self.current_time + crate::simulator::Duration::from_secs(*seconds as u64);
+                    let expiration =
+                        self.current_time + crate::simulator::Duration::from_secs(*seconds as u64);
                     self.expirations.insert(key.clone(), expiration);
                 } else if let Some(millis) = px {
-                    let expiration = self.current_time + crate::simulator::Duration::from_millis(*millis as u64);
+                    let expiration =
+                        self.current_time + crate::simulator::Duration::from_millis(*millis as u64);
                     self.expirations.insert(key.clone(), expiration);
                 } else {
                     self.expirations.remove(key);
@@ -2210,40 +2674,41 @@ impl CommandExecutor {
                 }
                 RespValue::Integer(count)
             }
-            
+
             Command::Exists(keys) => {
-                let count = keys.iter().filter(|k| {
-                    !self.is_expired(k) && self.data.contains_key(*k)
-                }).count();
+                let count = keys
+                    .iter()
+                    .filter(|k| !self.is_expired(k) && self.data.contains_key(*k))
+                    .count();
                 RespValue::Integer(count as i64)
             }
-            
-            Command::TypeOf(key) => {
-                match self.get_value(key) {
-                    Some(Value::String(_)) => RespValue::SimpleString("string".to_string()),
-                    Some(Value::List(_)) => RespValue::SimpleString("list".to_string()),
-                    Some(Value::Set(_)) => RespValue::SimpleString("set".to_string()),
-                    Some(Value::Hash(_)) => RespValue::SimpleString("hash".to_string()),
-                    Some(Value::SortedSet(_)) => RespValue::SimpleString("zset".to_string()),
-                    _ => RespValue::SimpleString("none".to_string()),
-                }
-            }
-            
+
+            Command::TypeOf(key) => match self.get_value(key) {
+                Some(Value::String(_)) => RespValue::SimpleString("string".to_string()),
+                Some(Value::List(_)) => RespValue::SimpleString("list".to_string()),
+                Some(Value::Set(_)) => RespValue::SimpleString("set".to_string()),
+                Some(Value::Hash(_)) => RespValue::SimpleString("hash".to_string()),
+                Some(Value::SortedSet(_)) => RespValue::SimpleString("zset".to_string()),
+                _ => RespValue::SimpleString("none".to_string()),
+            },
+
             Command::Keys(pattern) => {
-                let keys: Vec<RespValue> = self.data.keys()
+                let keys: Vec<RespValue> = self
+                    .data
+                    .keys()
                     .filter(|k| !self.is_expired(k) && self.matches_glob_pattern(k, pattern))
                     .map(|k| RespValue::BulkString(Some(k.as_bytes().to_vec())))
                     .collect();
                 RespValue::Array(Some(keys))
             }
-            
+
             Command::FlushDb | Command::FlushAll => {
                 self.data.clear();
                 self.expirations.clear();
                 self.access_times.clear();
                 RespValue::SimpleString("OK".to_string())
             }
-            
+
             Command::Expire(key, seconds) => {
                 if self.is_expired(key) || !self.data.contains_key(key) {
                     RespValue::Integer(0)
@@ -2254,13 +2719,14 @@ impl CommandExecutor {
                         self.access_times.remove(key);
                         RespValue::Integer(1)
                     } else {
-                        let expiration = self.current_time + crate::simulator::Duration::from_secs(*seconds as u64);
+                        let expiration = self.current_time
+                            + crate::simulator::Duration::from_secs(*seconds as u64);
                         self.expirations.insert(key.clone(), expiration);
                         RespValue::Integer(1)
                     }
                 }
             }
-            
+
             Command::ExpireAt(key, timestamp) => {
                 if self.is_expired(key) || !self.data.contains_key(key) {
                     RespValue::Integer(0)
@@ -2272,7 +2738,8 @@ impl CommandExecutor {
                         self.access_times.remove(key);
                         RespValue::Integer(1)
                     } else {
-                        let expiration_millis = (simulation_relative_secs as u64).saturating_mul(1000);
+                        let expiration_millis =
+                            (simulation_relative_secs as u64).saturating_mul(1000);
                         if expiration_millis <= self.current_time.as_millis() {
                             self.data.remove(key);
                             self.expirations.remove(key);
@@ -2286,12 +2753,13 @@ impl CommandExecutor {
                     }
                 }
             }
-            
+
             Command::PExpireAt(key, timestamp_millis) => {
                 if self.is_expired(key) || !self.data.contains_key(key) {
                     RespValue::Integer(0)
                 } else {
-                    let simulation_relative_millis = *timestamp_millis - (self.simulation_start_epoch * 1000);
+                    let simulation_relative_millis =
+                        *timestamp_millis - (self.simulation_start_epoch * 1000);
                     if simulation_relative_millis <= 0 {
                         self.data.remove(key);
                         self.expirations.remove(key);
@@ -2303,36 +2771,39 @@ impl CommandExecutor {
                         self.access_times.remove(key);
                         RespValue::Integer(1)
                     } else {
-                        let expiration = VirtualTime::from_millis(simulation_relative_millis as u64);
+                        let expiration =
+                            VirtualTime::from_millis(simulation_relative_millis as u64);
                         self.expirations.insert(key.clone(), expiration);
                         RespValue::Integer(1)
                     }
                 }
             }
-            
+
             Command::Ttl(key) => {
                 if self.is_expired(key) || !self.data.contains_key(key) {
                     RespValue::Integer(-2)
                 } else if let Some(expiration) = self.expirations.get(key) {
-                    let remaining_ms = expiration.as_millis() as i64 - self.current_time.as_millis() as i64;
+                    let remaining_ms =
+                        expiration.as_millis() as i64 - self.current_time.as_millis() as i64;
                     let remaining_secs = (remaining_ms / 1000).max(0);
                     RespValue::Integer(remaining_secs)
                 } else {
                     RespValue::Integer(-1)
                 }
             }
-            
+
             Command::Pttl(key) => {
                 if self.is_expired(key) || !self.data.contains_key(key) {
                     RespValue::Integer(-2)
                 } else if let Some(expiration) = self.expirations.get(key) {
-                    let remaining = expiration.as_millis() as i64 - self.current_time.as_millis() as i64;
+                    let remaining =
+                        expiration.as_millis() as i64 - self.current_time.as_millis() as i64;
                     RespValue::Integer(remaining.max(0))
                 } else {
                     RespValue::Integer(-1)
                 }
             }
-            
+
             Command::Persist(key) => {
                 if self.is_expired(key) || !self.data.contains_key(key) {
                     RespValue::Integer(0)
@@ -2342,19 +2813,13 @@ impl CommandExecutor {
                     RespValue::Integer(0)
                 }
             }
-            
-            Command::Incr(key) => {
-                self.incr_by_impl(key, 1)
-            }
-            
-            Command::Decr(key) => {
-                self.incr_by_impl(key, -1)
-            }
-            
-            Command::IncrBy(key, increment) => {
-                self.incr_by_impl(key, *increment)
-            }
-            
+
+            Command::Incr(key) => self.incr_by_impl(key, 1),
+
+            Command::Decr(key) => self.incr_by_impl(key, -1),
+
+            Command::IncrBy(key, increment) => self.incr_by_impl(key, *increment),
+
             Command::DecrBy(key, decrement) => {
                 // TigerStyle: Use checked_neg() to prevent overflow when decrement == i64::MIN
                 match decrement.checked_neg() {
@@ -2362,44 +2827,52 @@ impl CommandExecutor {
                     None => RespValue::Error("ERR value is out of range".to_string()),
                 }
             }
-            
-            Command::Append(key, value) => {
-                match self.get_value_mut(key) {
-                    Some(Value::String(s)) => {
-                        s.append(value);
-                        RespValue::Integer(s.len() as i64)
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => {
-                        let len = value.len();
-                        self.data.insert(key.clone(), Value::String(value.clone()));
-                        self.access_times.insert(key.clone(), self.current_time);
-                        RespValue::Integer(len as i64)
-                    }
+
+            Command::Append(key, value) => match self.get_value_mut(key) {
+                Some(Value::String(s)) => {
+                    s.append(value);
+                    RespValue::Integer(s.len() as i64)
                 }
-            }
-            
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => {
+                    let len = value.len();
+                    self.data.insert(key.clone(), Value::String(value.clone()));
+                    self.access_times.insert(key.clone(), self.current_time);
+                    RespValue::Integer(len as i64)
+                }
+            },
+
             Command::GetSet(key, value) => {
                 let old_value = match self.get_value(key) {
                     Some(Value::String(s)) => RespValue::BulkString(Some(s.as_bytes().to_vec())),
-                    Some(_) => return RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => {
+                        return RespValue::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        )
+                    }
                     None => RespValue::BulkString(None),
                 };
                 self.data.insert(key.clone(), Value::String(value.clone()));
                 self.access_times.insert(key.clone(), self.current_time);
                 old_value
             }
-            
+
             Command::MGet(keys) => {
-                let values: Vec<RespValue> = keys.iter().map(|k| {
-                    match self.get_value(k) {
-                        Some(Value::String(s)) => RespValue::BulkString(Some(s.as_bytes().to_vec())),
+                let values: Vec<RespValue> = keys
+                    .iter()
+                    .map(|k| match self.get_value(k) {
+                        Some(Value::String(s)) => {
+                            RespValue::BulkString(Some(s.as_bytes().to_vec()))
+                        }
                         _ => RespValue::BulkString(None),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 RespValue::Array(Some(values))
             }
-            
+
             Command::MSet(pairs) => {
                 for (key, value) in pairs {
                     self.data.insert(key.clone(), Value::String(value.clone()));
@@ -2424,8 +2897,13 @@ impl CommandExecutor {
                 for key in keys {
                     let value = self.get_value(key);
                     results.push(match value {
-                        Some(Value::String(s)) => RespValue::BulkString(Some(s.as_bytes().to_vec())),
-                        Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                        Some(Value::String(s)) => {
+                            RespValue::BulkString(Some(s.as_bytes().to_vec()))
+                        }
+                        Some(_) => RespValue::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        ),
                         None => RespValue::BulkString(None),
                     });
                 }
@@ -2437,7 +2915,10 @@ impl CommandExecutor {
                     self.data.remove(key);
                     self.expirations.remove(key);
                 }
-                let list = self.data.entry(key.clone()).or_insert_with(|| Value::List(RedisList::new()));
+                let list = self
+                    .data
+                    .entry(key.clone())
+                    .or_insert_with(|| Value::List(RedisList::new()));
                 self.access_times.insert(key.clone(), self.current_time);
                 match list {
                     Value::List(l) => {
@@ -2446,16 +2927,22 @@ impl CommandExecutor {
                         }
                         RespValue::Integer(l.len() as i64)
                     }
-                    _ => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    _ => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                 }
             }
-            
+
             Command::RPush(key, values) => {
                 if self.is_expired(key) {
                     self.data.remove(key);
                     self.expirations.remove(key);
                 }
-                let list = self.data.entry(key.clone()).or_insert_with(|| Value::List(RedisList::new()));
+                let list = self
+                    .data
+                    .entry(key.clone())
+                    .or_insert_with(|| Value::List(RedisList::new()));
                 self.access_times.insert(key.clone(), self.current_time);
                 match list {
                     Value::List(l) => {
@@ -2464,50 +2951,49 @@ impl CommandExecutor {
                         }
                         RespValue::Integer(l.len() as i64)
                     }
-                    _ => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    _ => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                 }
             }
-            
-            Command::LPop(key) => {
-                match self.get_value_mut(key) {
-                    Some(Value::List(l)) => {
-                        match l.lpop() {
-                            Some(v) => RespValue::BulkString(Some(v.as_bytes().to_vec())),
-                            None => RespValue::BulkString(None),
-                        }
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+
+            Command::LPop(key) => match self.get_value_mut(key) {
+                Some(Value::List(l)) => match l.lpop() {
+                    Some(v) => RespValue::BulkString(Some(v.as_bytes().to_vec())),
                     None => RespValue::BulkString(None),
-                }
-            }
-            
-            Command::RPop(key) => {
-                match self.get_value_mut(key) {
-                    Some(Value::List(l)) => {
-                        match l.rpop() {
-                            Some(v) => RespValue::BulkString(Some(v.as_bytes().to_vec())),
-                            None => RespValue::BulkString(None),
-                        }
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                },
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::BulkString(None),
+            },
+
+            Command::RPop(key) => match self.get_value_mut(key) {
+                Some(Value::List(l)) => match l.rpop() {
+                    Some(v) => RespValue::BulkString(Some(v.as_bytes().to_vec())),
                     None => RespValue::BulkString(None),
+                },
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::BulkString(None),
+            },
+
+            Command::LRange(key, start, stop) => match self.get_value(key) {
+                Some(Value::List(l)) => {
+                    let range = l.range(*start, *stop);
+                    let elements: Vec<RespValue> = range
+                        .iter()
+                        .map(|s| RespValue::BulkString(Some(s.as_bytes().to_vec())))
+                        .collect();
+                    RespValue::Array(Some(elements))
                 }
-            }
-            
-            Command::LRange(key, start, stop) => {
-                match self.get_value(key) {
-                    Some(Value::List(l)) => {
-                        let range = l.range(*start, *stop);
-                        let elements: Vec<RespValue> = range
-                            .iter()
-                            .map(|s| RespValue::BulkString(Some(s.as_bytes().to_vec())))
-                            .collect();
-                        RespValue::Array(Some(elements))
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => RespValue::Array(Some(Vec::new())),
-                }
-            }
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::Array(Some(Vec::new())),
+            },
 
             Command::LSet(key, index, value) => {
                 if self.is_expired(key) {
@@ -2515,16 +3001,17 @@ impl CommandExecutor {
                     self.expirations.remove(key);
                 }
                 match self.data.get_mut(key) {
-                    Some(Value::List(list)) => {
-                        match list.set(*index, value.clone()) {
-                            Ok(()) => {
-                                self.access_times.insert(key.clone(), self.current_time);
-                                RespValue::SimpleString("OK".to_string())
-                            }
-                            Err(e) => RespValue::Error(e),
+                    Some(Value::List(list)) => match list.set(*index, value.clone()) {
+                        Ok(()) => {
+                            self.access_times.insert(key.clone(), self.current_time);
+                            RespValue::SimpleString("OK".to_string())
                         }
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                        Err(e) => RespValue::Error(e),
+                    },
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Error("ERR no such key".to_string()),
                 }
             }
@@ -2546,7 +3033,10 @@ impl CommandExecutor {
                         }
                         RespValue::SimpleString("OK".to_string())
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::SimpleString("OK".to_string()), // No-op if key doesn't exist
                 }
             }
@@ -2559,7 +3049,12 @@ impl CommandExecutor {
                 // Pop from source
                 let popped = match self.data.get_mut(source) {
                     Some(Value::List(list)) => list.rpop(),
-                    Some(_) => return RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => {
+                        return RespValue::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        )
+                    }
                     None => None,
                 };
 
@@ -2579,7 +3074,9 @@ impl CommandExecutor {
                             self.data.remove(dest);
                             self.expirations.remove(dest);
                         }
-                        let dest_list = self.data.entry(dest.clone())
+                        let dest_list = self
+                            .data
+                            .entry(dest.clone())
                             .or_insert_with(|| Value::List(RedisList::new()));
                         match dest_list {
                             Value::List(list) => {
@@ -2587,14 +3084,22 @@ impl CommandExecutor {
                                 self.access_times.insert(dest.clone(), self.current_time);
                                 RespValue::BulkString(Some(value.as_bytes().to_vec()))
                             }
-                            _ => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                            _ => RespValue::Error(
+                                "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                    .to_string(),
+                            ),
                         }
                     }
                     None => RespValue::BulkString(None),
                 }
             }
 
-            Command::LMove { source, dest, wherefrom, whereto } => {
+            Command::LMove {
+                source,
+                dest,
+                wherefrom,
+                whereto,
+            } => {
                 if self.is_expired(source) {
                     self.data.remove(source);
                     self.expirations.remove(source);
@@ -2608,7 +3113,12 @@ impl CommandExecutor {
                             list.rpop()
                         }
                     }
-                    Some(_) => return RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => {
+                        return RespValue::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        )
+                    }
                     None => None,
                 };
 
@@ -2628,7 +3138,9 @@ impl CommandExecutor {
                             self.data.remove(dest);
                             self.expirations.remove(dest);
                         }
-                        let dest_list = self.data.entry(dest.clone())
+                        let dest_list = self
+                            .data
+                            .entry(dest.clone())
                             .or_insert_with(|| Value::List(RedisList::new()));
                         match dest_list {
                             Value::List(list) => {
@@ -2640,7 +3152,10 @@ impl CommandExecutor {
                                 self.access_times.insert(dest.clone(), self.current_time);
                                 RespValue::BulkString(Some(value.as_bytes().to_vec()))
                             }
-                            _ => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                            _ => RespValue::Error(
+                                "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                    .to_string(),
+                            ),
                         }
                     }
                     None => RespValue::BulkString(None),
@@ -2652,7 +3167,10 @@ impl CommandExecutor {
                     self.data.remove(key);
                     self.expirations.remove(key);
                 }
-                let set = self.data.entry(key.clone()).or_insert_with(|| Value::Set(RedisSet::new()));
+                let set = self
+                    .data
+                    .entry(key.clone())
+                    .or_insert_with(|| Value::Set(RedisSet::new()));
                 self.access_times.insert(key.clone(), self.current_time);
                 match set {
                     Value::Set(s) => {
@@ -2664,40 +3182,45 @@ impl CommandExecutor {
                         }
                         RespValue::Integer(added)
                     }
-                    _ => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    _ => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                 }
             }
-            
-            Command::SMembers(key) => {
-                match self.get_value(key) {
-                    Some(Value::Set(s)) => {
-                        let members: Vec<RespValue> = s.members()
-                            .iter()
-                            .map(|m| RespValue::BulkString(Some(m.as_bytes().to_vec())))
-                            .collect();
-                        RespValue::Array(Some(members))
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => RespValue::Array(Some(Vec::new())),
+
+            Command::SMembers(key) => match self.get_value(key) {
+                Some(Value::Set(s)) => {
+                    let members: Vec<RespValue> = s
+                        .members()
+                        .iter()
+                        .map(|m| RespValue::BulkString(Some(m.as_bytes().to_vec())))
+                        .collect();
+                    RespValue::Array(Some(members))
                 }
-            }
-            
-            Command::SIsMember(key, member) => {
-                match self.get_value(key) {
-                    Some(Value::Set(s)) => {
-                        RespValue::Integer(if s.contains(member) { 1 } else { 0 })
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => RespValue::Integer(0),
-                }
-            }
-            
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::Array(Some(Vec::new())),
+            },
+
+            Command::SIsMember(key, member) => match self.get_value(key) {
+                Some(Value::Set(s)) => RespValue::Integer(if s.contains(member) { 1 } else { 0 }),
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::Integer(0),
+            },
+
             Command::HSet(key, pairs) => {
                 if self.is_expired(key) {
                     self.data.remove(key);
                     self.expirations.remove(key);
                 }
-                let hash = self.data.entry(key.clone()).or_insert_with(|| Value::Hash(RedisHash::new()));
+                let hash = self
+                    .data
+                    .entry(key.clone())
+                    .or_insert_with(|| Value::Hash(RedisHash::new()));
                 self.access_times.insert(key.clone(), self.current_time);
                 match hash {
                     Value::Hash(h) => {
@@ -2710,23 +3233,24 @@ impl CommandExecutor {
                         }
                         RespValue::Integer(new_fields)
                     }
-                    _ => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    _ => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                 }
             }
-            
-            Command::HGet(key, field) => {
-                match self.get_value(key) {
-                    Some(Value::Hash(h)) => {
-                        match h.get(field) {
-                            Some(v) => RespValue::BulkString(Some(v.as_bytes().to_vec())),
-                            None => RespValue::BulkString(None),
-                        }
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+
+            Command::HGet(key, field) => match self.get_value(key) {
+                Some(Value::Hash(h)) => match h.get(field) {
+                    Some(v) => RespValue::BulkString(Some(v.as_bytes().to_vec())),
                     None => RespValue::BulkString(None),
-                }
-            }
-            
+                },
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::BulkString(None),
+            },
+
             Command::HGetAll(key) => {
                 match self.get_value(key) {
                     Some(Value::Hash(h)) => {
@@ -2738,7 +3262,10 @@ impl CommandExecutor {
                         }
                         RespValue::Array(Some(elements))
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Array(Some(Vec::new())),
                 }
             }
@@ -2754,13 +3281,17 @@ impl CommandExecutor {
                 // Check if key exists and is wrong type before inserting
                 if let Some(existing) = self.data.get(key) {
                     if !matches!(existing, Value::Hash(_)) {
-                        return RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string());
+                        return RespValue::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        );
                     }
                 }
 
-                let hash = self.data.entry(key.clone()).or_insert_with(|| {
-                    Value::Hash(RedisHash::new())
-                });
+                let hash = self
+                    .data
+                    .entry(key.clone())
+                    .or_insert_with(|| Value::Hash(RedisHash::new()));
                 self.access_times.insert(key.clone(), self.current_time);
 
                 match hash {
@@ -2771,9 +3302,11 @@ impl CommandExecutor {
                                 let s = v.to_string();
                                 match s.parse::<i64>() {
                                     Ok(n) => n,
-                                    Err(_) => return RespValue::Error(
-                                        "ERR hash value is not an integer".to_string()
-                                    ),
+                                    Err(_) => {
+                                        return RespValue::Error(
+                                            "ERR hash value is not an integer".to_string(),
+                                        )
+                                    }
                                 }
                             }
                             None => 0,
@@ -2782,7 +3315,11 @@ impl CommandExecutor {
                         // TigerStyle: Use checked arithmetic to detect overflow
                         let new_value = match current.checked_add(*increment) {
                             Some(v) => v,
-                            None => return RespValue::Error("ERR increment or decrement would overflow".to_string()),
+                            None => {
+                                return RespValue::Error(
+                                    "ERR increment or decrement would overflow".to_string(),
+                                )
+                            }
                         };
 
                         h.set(field.clone(), SDS::from_str(&new_value.to_string()));
@@ -2800,16 +3337,30 @@ impl CommandExecutor {
 
                         RespValue::Integer(new_value)
                     }
-                    _ => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    _ => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                 }
             }
 
-            Command::ZAdd { key, pairs, nx, xx, gt, lt, ch } => {
+            Command::ZAdd {
+                key,
+                pairs,
+                nx,
+                xx,
+                gt,
+                lt,
+                ch,
+            } => {
                 if self.is_expired(key) {
                     self.data.remove(key);
                     self.expirations.remove(key);
                 }
-                let zset = self.data.entry(key.clone()).or_insert_with(|| Value::SortedSet(RedisSortedSet::new()));
+                let zset = self
+                    .data
+                    .entry(key.clone())
+                    .or_insert_with(|| Value::SortedSet(RedisSortedSet::new()));
                 self.access_times.insert(key.clone(), self.current_time);
                 match zset {
                     Value::SortedSet(zs) => {
@@ -2818,7 +3369,7 @@ impl CommandExecutor {
                         for (score, member) in pairs {
                             let exists = zs.score(&member).is_some();
                             let current_score = zs.score(&member);
-                            
+
                             // NX: only add new elements
                             if *nx && exists {
                                 continue;
@@ -2843,7 +3394,7 @@ impl CommandExecutor {
                                     }
                                 }
                             }
-                            
+
                             let was_added = zs.add(member.clone(), *score);
                             if was_added {
                                 added += 1;
@@ -2860,76 +3411,82 @@ impl CommandExecutor {
                             RespValue::Integer(added)
                         }
                     }
-                    _ => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    _ => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                 }
             }
-            
-            Command::ZRange(key, start, stop) => {
-                match self.get_value(key) {
-                    Some(Value::SortedSet(zs)) => {
-                        let range = zs.range(*start, *stop);
+
+            Command::ZRange(key, start, stop) => match self.get_value(key) {
+                Some(Value::SortedSet(zs)) => {
+                    let range = zs.range(*start, *stop);
+                    let elements: Vec<RespValue> = range
+                        .iter()
+                        .map(|(m, _)| RespValue::BulkString(Some(m.as_bytes().to_vec())))
+                        .collect();
+                    RespValue::Array(Some(elements))
+                }
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::Array(Some(Vec::new())),
+            },
+
+            Command::ZRevRange(key, start, stop, with_scores) => match self.get_value(key) {
+                Some(Value::SortedSet(zs)) => {
+                    let range = zs.rev_range(*start, *stop);
+                    if *with_scores {
+                        let mut elements = Vec::with_capacity(range.len() * 2);
+                        for (m, s) in range {
+                            elements.push(RespValue::BulkString(Some(m.as_bytes().to_vec())));
+                            elements.push(RespValue::BulkString(Some(s.to_string().into_bytes())));
+                        }
+                        RespValue::Array(Some(elements))
+                    } else {
                         let elements: Vec<RespValue> = range
                             .iter()
                             .map(|(m, _)| RespValue::BulkString(Some(m.as_bytes().to_vec())))
                             .collect();
                         RespValue::Array(Some(elements))
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => RespValue::Array(Some(Vec::new())),
                 }
-            }
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::Array(Some(Vec::new())),
+            },
 
-            Command::ZRevRange(key, start, stop, with_scores) => {
-                match self.get_value(key) {
-                    Some(Value::SortedSet(zs)) => {
-                        let range = zs.rev_range(*start, *stop);
-                        if *with_scores {
-                            let mut elements = Vec::with_capacity(range.len() * 2);
-                            for (m, s) in range {
-                                elements.push(RespValue::BulkString(Some(m.as_bytes().to_vec())));
-                                elements.push(RespValue::BulkString(Some(s.to_string().into_bytes())));
-                            }
-                            RespValue::Array(Some(elements))
-                        } else {
-                            let elements: Vec<RespValue> = range
-                                .iter()
-                                .map(|(m, _)| RespValue::BulkString(Some(m.as_bytes().to_vec())))
-                                .collect();
-                            RespValue::Array(Some(elements))
-                        }
+            Command::ZScore(key, member) => match self.get_value(key) {
+                Some(Value::SortedSet(zs)) => match zs.score(member) {
+                    Some(score) => {
+                        let score_str = score.to_string();
+                        RespValue::BulkString(Some(score_str.into_bytes()))
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => RespValue::Array(Some(Vec::new())),
-                }
-            }
-
-            Command::ZScore(key, member) => {
-                match self.get_value(key) {
-                    Some(Value::SortedSet(zs)) => {
-                        match zs.score(member) {
-                            Some(score) => {
-                                let score_str = score.to_string();
-                                RespValue::BulkString(Some(score_str.into_bytes()))
-                            }
-                            None => RespValue::BulkString(None),
-                        }
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
                     None => RespValue::BulkString(None),
-                }
-            }
+                },
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::BulkString(None),
+            },
 
             // === NEW COMMANDS (TigerStyle + VOPR) ===
-
             Command::StrLen(key) => {
                 match self.get_value(key) {
                     Some(Value::String(s)) => {
                         let len = s.len() as i64;
                         // TigerStyle: Postcondition - length must be non-negative
-                        debug_assert!(len >= 0, "Invariant violated: STRLEN must return non-negative");
+                        debug_assert!(
+                            len >= 0,
+                            "Invariant violated: STRLEN must return non-negative"
+                        );
                         RespValue::Integer(len)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
@@ -2939,10 +3496,16 @@ impl CommandExecutor {
                     Some(Value::List(l)) => {
                         let len = l.len() as i64;
                         // TigerStyle: Postcondition - length must be non-negative
-                        debug_assert!(len >= 0, "Invariant violated: LLEN must return non-negative");
+                        debug_assert!(
+                            len >= 0,
+                            "Invariant violated: LLEN must return non-negative"
+                        );
                         RespValue::Integer(len)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
@@ -2965,7 +3528,10 @@ impl CommandExecutor {
                         };
 
                         // TigerStyle: Precondition verified
-                        debug_assert!(actual_index < l.len(), "Invariant violated: index must be in bounds");
+                        debug_assert!(
+                            actual_index < l.len(),
+                            "Invariant violated: index must be in bounds"
+                        );
 
                         let range = l.range(actual_index as isize, actual_index as isize);
                         if let Some(item) = range.first() {
@@ -2974,7 +3540,10 @@ impl CommandExecutor {
                             RespValue::BulkString(None)
                         }
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::BulkString(None),
                 }
             }
@@ -2996,14 +3565,27 @@ impl CommandExecutor {
                         // TigerStyle: Postconditions
                         #[cfg(debug_assertions)]
                         {
-                            debug_assert!(removed >= 0, "Invariant violated: removed count must be non-negative");
-                            debug_assert!(removed <= members.len() as i64, "Invariant violated: can't remove more than requested");
-                            debug_assert_eq!(s.len(), pre_len - removed as usize, "Invariant violated: len must decrease by removed count");
+                            debug_assert!(
+                                removed >= 0,
+                                "Invariant violated: removed count must be non-negative"
+                            );
+                            debug_assert!(
+                                removed <= members.len() as i64,
+                                "Invariant violated: can't remove more than requested"
+                            );
+                            debug_assert_eq!(
+                                s.len(),
+                                pre_len - removed as usize,
+                                "Invariant violated: len must decrease by removed count"
+                            );
                         }
 
                         RespValue::Integer(removed)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
@@ -3013,10 +3595,16 @@ impl CommandExecutor {
                     Some(Value::Set(s)) => {
                         let card = s.len() as i64;
                         // TigerStyle: Postcondition
-                        debug_assert!(card >= 0, "Invariant violated: SCARD must return non-negative");
+                        debug_assert!(
+                            card >= 0,
+                            "Invariant violated: SCARD must return non-negative"
+                        );
                         RespValue::Integer(card)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
@@ -3038,14 +3626,27 @@ impl CommandExecutor {
                         // TigerStyle: Postconditions
                         #[cfg(debug_assertions)]
                         {
-                            debug_assert!(deleted >= 0, "Invariant violated: deleted count must be non-negative");
-                            debug_assert!(deleted <= fields.len() as i64, "Invariant violated: can't delete more than requested");
-                            debug_assert_eq!(h.len(), pre_len - deleted as usize, "Invariant violated: len must decrease by deleted count");
+                            debug_assert!(
+                                deleted >= 0,
+                                "Invariant violated: deleted count must be non-negative"
+                            );
+                            debug_assert!(
+                                deleted <= fields.len() as i64,
+                                "Invariant violated: can't delete more than requested"
+                            );
+                            debug_assert_eq!(
+                                h.len(),
+                                pre_len - deleted as usize,
+                                "Invariant violated: len must decrease by deleted count"
+                            );
                         }
 
                         RespValue::Integer(deleted)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
@@ -3055,7 +3656,11 @@ impl CommandExecutor {
                     Some(Value::Hash(h)) => {
                         let hash_keys = h.keys();
                         // TigerStyle: Postcondition - keys count must equal len
-                        debug_assert_eq!(hash_keys.len(), h.len(), "Invariant violated: HKEYS count must equal HLEN");
+                        debug_assert_eq!(
+                            hash_keys.len(),
+                            h.len(),
+                            "Invariant violated: HKEYS count must equal HLEN"
+                        );
 
                         let keys: Vec<RespValue> = hash_keys
                             .iter()
@@ -3063,7 +3668,10 @@ impl CommandExecutor {
                             .collect();
                         RespValue::Array(Some(keys))
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Array(Some(Vec::new())),
                 }
             }
@@ -3073,7 +3681,11 @@ impl CommandExecutor {
                     Some(Value::Hash(h)) => {
                         let hash_vals = h.values();
                         // TigerStyle: Postcondition - values count must equal len
-                        debug_assert_eq!(hash_vals.len(), h.len(), "Invariant violated: HVALS count must equal HLEN");
+                        debug_assert_eq!(
+                            hash_vals.len(),
+                            h.len(),
+                            "Invariant violated: HVALS count must equal HLEN"
+                        );
 
                         let vals: Vec<RespValue> = hash_vals
                             .iter()
@@ -3081,7 +3693,10 @@ impl CommandExecutor {
                             .collect();
                         RespValue::Array(Some(vals))
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Array(Some(Vec::new())),
                 }
             }
@@ -3091,10 +3706,16 @@ impl CommandExecutor {
                     Some(Value::Hash(h)) => {
                         let len = h.len() as i64;
                         // TigerStyle: Postcondition
-                        debug_assert!(len >= 0, "Invariant violated: HLEN must return non-negative");
+                        debug_assert!(
+                            len >= 0,
+                            "Invariant violated: HLEN must return non-negative"
+                        );
                         RespValue::Integer(len)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
@@ -3105,10 +3726,16 @@ impl CommandExecutor {
                         let exists = h.exists(field);
                         // TigerStyle: Postcondition - result must be 0 or 1
                         let result = if exists { 1i64 } else { 0i64 };
-                        debug_assert!(result == 0 || result == 1, "Invariant violated: HEXISTS must return 0 or 1");
+                        debug_assert!(
+                            result == 0 || result == 1,
+                            "Invariant violated: HEXISTS must return 0 or 1"
+                        );
                         RespValue::Integer(result)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
@@ -3130,14 +3757,27 @@ impl CommandExecutor {
                         // TigerStyle: Postconditions
                         #[cfg(debug_assertions)]
                         {
-                            debug_assert!(removed >= 0, "Invariant violated: removed count must be non-negative");
-                            debug_assert!(removed <= members.len() as i64, "Invariant violated: can't remove more than requested");
-                            debug_assert_eq!(zs.len(), pre_len - removed as usize, "Invariant violated: len must decrease by removed count");
+                            debug_assert!(
+                                removed >= 0,
+                                "Invariant violated: removed count must be non-negative"
+                            );
+                            debug_assert!(
+                                removed <= members.len() as i64,
+                                "Invariant violated: can't remove more than requested"
+                            );
+                            debug_assert_eq!(
+                                zs.len(),
+                                pre_len - removed as usize,
+                                "Invariant violated: len must decrease by removed count"
+                            );
                         }
 
                         RespValue::Integer(removed)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
@@ -3148,13 +3788,19 @@ impl CommandExecutor {
                         match zs.rank(member) {
                             Some(rank) => {
                                 // TigerStyle: Postcondition - rank must be valid index
-                                debug_assert!(rank < zs.len(), "Invariant violated: rank must be less than zset length");
+                                debug_assert!(
+                                    rank < zs.len(),
+                                    "Invariant violated: rank must be less than zset length"
+                                );
                                 RespValue::Integer(rank as i64)
                             }
                             None => RespValue::BulkString(None),
                         }
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::BulkString(None),
                 }
             }
@@ -3164,64 +3810,90 @@ impl CommandExecutor {
                     Some(Value::SortedSet(zs)) => {
                         let card = zs.len() as i64;
                         // TigerStyle: Postcondition
-                        debug_assert!(card >= 0, "Invariant violated: ZCARD must return non-negative");
+                        debug_assert!(
+                            card >= 0,
+                            "Invariant violated: ZCARD must return non-negative"
+                        );
                         RespValue::Integer(card)
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
                     None => RespValue::Integer(0),
                 }
             }
 
-            Command::ZCount(key, min, max) => {
-                match self.get_value(key) {
-                    Some(Value::SortedSet(zs)) => {
-                        match zs.count_in_range(min, max) {
-                            Ok(count) => RespValue::Integer(count as i64),
-                            Err(e) => RespValue::Error(e),
-                        }
-                    }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => RespValue::Integer(0),
-                }
-            }
+            Command::ZCount(key, min, max) => match self.get_value(key) {
+                Some(Value::SortedSet(zs)) => match zs.count_in_range(min, max) {
+                    Ok(count) => RespValue::Integer(count as i64),
+                    Err(e) => RespValue::Error(e),
+                },
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::Integer(0),
+            },
 
-            Command::ZRangeByScore { key, min, max, with_scores, limit } => {
-                match self.get_value(key) {
-                    Some(Value::SortedSet(zs)) => {
-                        match zs.range_by_score(min, max, *with_scores, *limit) {
-                            Ok(results) => {
-                                let elements: Vec<RespValue> = results.iter()
-                                    .flat_map(|(member, score)| {
-                                        let mut v = vec![RespValue::BulkString(Some(member.as_bytes().to_vec()))];
-                                        if let Some(s) = score {
-                                            v.push(RespValue::BulkString(Some(s.to_string().into_bytes())));
-                                        }
-                                        v
-                                    })
-                                    .collect();
-                                RespValue::Array(Some(elements))
-                            }
-                            Err(e) => RespValue::Error(e),
+            Command::ZRangeByScore {
+                key,
+                min,
+                max,
+                with_scores,
+                limit,
+            } => match self.get_value(key) {
+                Some(Value::SortedSet(zs)) => {
+                    match zs.range_by_score(min, max, *with_scores, *limit) {
+                        Ok(results) => {
+                            let elements: Vec<RespValue> = results
+                                .iter()
+                                .flat_map(|(member, score)| {
+                                    let mut v = vec![RespValue::BulkString(Some(
+                                        member.as_bytes().to_vec(),
+                                    ))];
+                                    if let Some(s) = score {
+                                        v.push(RespValue::BulkString(Some(
+                                            s.to_string().into_bytes(),
+                                        )));
+                                    }
+                                    v
+                                })
+                                .collect();
+                            RespValue::Array(Some(elements))
                         }
+                        Err(e) => RespValue::Error(e),
                     }
-                    Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
-                    None => RespValue::Array(Some(vec![])),
                 }
-            }
+                Some(_) => RespValue::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+                ),
+                None => RespValue::Array(Some(vec![])),
+            },
 
-            Command::Scan { cursor, pattern, count } => {
+            Command::Scan {
+                cursor,
+                pattern,
+                count,
+            } => {
                 let count = count.unwrap_or(10);
                 // Collect all non-expired keys
-                let mut keys: Vec<String> = self.data.keys()
+                let mut keys: Vec<String> = self
+                    .data
+                    .keys()
                     .filter(|k| !self.is_expired(k))
-                    .filter(|k| pattern.as_ref().map_or(true, |p| self.matches_glob_pattern(k, p)))
+                    .filter(|k| {
+                        pattern
+                            .as_ref()
+                            .map_or(true, |p| self.matches_glob_pattern(k, p))
+                    })
                     .cloned()
                     .collect();
                 // Sort for deterministic iteration
                 keys.sort();
 
                 // Skip to cursor position and take count+1 to know if there's more
-                let results: Vec<String> = keys.into_iter()
+                let results: Vec<String> = keys
+                    .into_iter()
                     .skip(*cursor as usize)
                     .take(count + 1)
                     .collect();
@@ -3235,14 +3907,20 @@ impl CommandExecutor {
                 RespValue::Array(Some(vec![
                     RespValue::BulkString(Some(next_cursor.to_string().into_bytes())),
                     RespValue::Array(Some(
-                        result_keys.iter()
+                        result_keys
+                            .iter()
                             .map(|k| RespValue::BulkString(Some(k.as_bytes().to_vec())))
-                            .collect()
+                            .collect(),
                     )),
                 ]))
             }
 
-            Command::HScan { key, cursor, pattern, count } => {
+            Command::HScan {
+                key,
+                cursor,
+                pattern,
+                count,
+            } => {
                 // Handle expiration
                 if self.is_expired(key) {
                     self.data.remove(key);
@@ -3254,7 +3932,12 @@ impl CommandExecutor {
                     Some(Value::Hash(h)) => {
                         Some(h.iter().map(|(f, v)| (f.clone(), v.to_string())).collect())
                     }
-                    Some(_) => return RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => {
+                        return RespValue::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        )
+                    }
                     None => None,
                 };
 
@@ -3262,14 +3945,20 @@ impl CommandExecutor {
                     Some(all_fields) => {
                         let count = count.unwrap_or(10);
                         // Filter by pattern
-                        let mut fields: Vec<(String, String)> = all_fields.into_iter()
-                            .filter(|(f, _)| pattern.as_ref().map_or(true, |p| self.matches_glob_pattern(f, p)))
+                        let mut fields: Vec<(String, String)> = all_fields
+                            .into_iter()
+                            .filter(|(f, _)| {
+                                pattern
+                                    .as_ref()
+                                    .map_or(true, |p| self.matches_glob_pattern(f, p))
+                            })
                             .collect();
                         // Sort for deterministic iteration
                         fields.sort_by(|a, b| a.0.cmp(&b.0));
 
                         // Skip to cursor position and take count+1
-                        let results: Vec<(String, String)> = fields.into_iter()
+                        let results: Vec<(String, String)> = fields
+                            .into_iter()
                             .skip(*cursor as usize)
                             .take(count + 1)
                             .collect();
@@ -3281,7 +3970,8 @@ impl CommandExecutor {
                         };
 
                         // Flatten field-value pairs into array
-                        let elements: Vec<RespValue> = result_fields.iter()
+                        let elements: Vec<RespValue> = result_fields
+                            .iter()
                             .flat_map(|(f, v)| {
                                 vec![
                                     RespValue::BulkString(Some(f.as_bytes().to_vec())),
@@ -3305,7 +3995,12 @@ impl CommandExecutor {
                 }
             }
 
-            Command::ZScan { key, cursor, pattern, count } => {
+            Command::ZScan {
+                key,
+                cursor,
+                pattern,
+                count,
+            } => {
                 // Handle expiration
                 if self.is_expired(key) {
                     self.data.remove(key);
@@ -3317,7 +4012,12 @@ impl CommandExecutor {
                     Some(Value::SortedSet(zs)) => {
                         Some(zs.iter().map(|(m, s)| (m.clone(), *s)).collect())
                     }
-                    Some(_) => return RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    Some(_) => {
+                        return RespValue::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        )
+                    }
                     None => None,
                 };
 
@@ -3325,14 +4025,20 @@ impl CommandExecutor {
                     Some(all_members) => {
                         let count = count.unwrap_or(10);
                         // Filter by pattern
-                        let mut members: Vec<(String, f64)> = all_members.into_iter()
-                            .filter(|(m, _)| pattern.as_ref().map_or(true, |p| self.matches_glob_pattern(m, p)))
+                        let mut members: Vec<(String, f64)> = all_members
+                            .into_iter()
+                            .filter(|(m, _)| {
+                                pattern
+                                    .as_ref()
+                                    .map_or(true, |p| self.matches_glob_pattern(m, p))
+                            })
                             .collect();
                         // Sort by member for deterministic iteration
                         members.sort_by(|a, b| a.0.cmp(&b.0));
 
                         // Skip to cursor position and take count+1
-                        let results: Vec<(String, f64)> = members.into_iter()
+                        let results: Vec<(String, f64)> = members
+                            .into_iter()
                             .skip(*cursor as usize)
                             .take(count + 1)
                             .collect();
@@ -3344,7 +4050,8 @@ impl CommandExecutor {
                         };
 
                         // Flatten member-score pairs into array
-                        let elements: Vec<RespValue> = result_members.iter()
+                        let elements: Vec<RespValue> = result_members
+                            .iter()
                             .flat_map(|(m, s)| {
                                 vec![
                                     RespValue::BulkString(Some(m.as_bytes().to_vec())),
@@ -3399,9 +4106,8 @@ impl CommandExecutor {
                 }
 
                 // Execute all queued commands
-                let results: Vec<RespValue> = commands.into_iter()
-                    .map(|cmd| self.execute(&cmd))
-                    .collect();
+                let results: Vec<RespValue> =
+                    commands.into_iter().map(|cmd| self.execute(&cmd)).collect();
 
                 RespValue::Array(Some(results))
             }
@@ -3454,7 +4160,9 @@ impl CommandExecutor {
                             let script = script.clone();
                             self.execute_lua_script(&script, keys, args)
                         }
-                        None => RespValue::Error("NOSCRIPT No matching script. Please use EVAL.".to_string()),
+                        None => RespValue::Error(
+                            "NOSCRIPT No matching script. Please use EVAL.".to_string(),
+                        ),
                     }
                 }
                 #[cfg(not(feature = "lua"))]
@@ -3511,9 +4219,7 @@ impl CommandExecutor {
                 }
             }
 
-            Command::Unknown(cmd) => {
-                RespValue::Error(format!("ERR unknown command '{}'", cmd))
-            }
+            Command::Unknown(cmd) => RespValue::Error(format!("ERR unknown command '{}'", cmd)),
         }
     }
 
@@ -3796,7 +4502,15 @@ impl CommandExecutor {
                     }
                     i += 1;
                 }
-                Ok(Command::Set { key, value, ex, px, nx, xx, get })
+                Ok(Command::Set {
+                    key,
+                    value,
+                    ex,
+                    px,
+                    nx,
+                    xx,
+                    get,
+                })
             }
             "DEL" => {
                 if args.is_empty() {
@@ -3948,7 +4662,7 @@ impl CommandExecutor {
                     return Err("ZADD requires key and score-member pairs".to_string());
                 }
                 let key = args[0].clone();
-                
+
                 // Parse optional flags
                 let mut nx = false;
                 let mut xx = false;
@@ -3956,23 +4670,38 @@ impl CommandExecutor {
                 let mut lt = false;
                 let mut ch = false;
                 let mut i = 1;
-                
+
                 while i < args.len() {
                     let opt = args[i].to_uppercase();
                     match opt.as_str() {
-                        "NX" => { nx = true; i += 1; }
-                        "XX" => { xx = true; i += 1; }
-                        "GT" => { gt = true; i += 1; }
-                        "LT" => { lt = true; i += 1; }
-                        "CH" => { ch = true; i += 1; }
+                        "NX" => {
+                            nx = true;
+                            i += 1;
+                        }
+                        "XX" => {
+                            xx = true;
+                            i += 1;
+                        }
+                        "GT" => {
+                            gt = true;
+                            i += 1;
+                        }
+                        "LT" => {
+                            lt = true;
+                            i += 1;
+                        }
+                        "CH" => {
+                            ch = true;
+                            i += 1;
+                        }
                         _ => break,
                     }
                 }
-                
+
                 if (args.len() - i) % 2 != 0 || i >= args.len() {
                     return Err("ZADD requires score-member pairs".to_string());
                 }
-                
+
                 let mut pairs: Vec<(f64, SDS)> = Vec::new();
                 while i < args.len() {
                     let score: f64 = args[i]
@@ -3981,7 +4710,15 @@ impl CommandExecutor {
                     pairs.push((score, SDS::from_str(&args[i + 1])));
                     i += 2;
                 }
-                Ok(Command::ZAdd { key, pairs, nx, xx, gt, lt, ch })
+                Ok(Command::ZAdd {
+                    key,
+                    pairs,
+                    nx,
+                    xx,
+                    gt,
+                    lt,
+                    ch,
+                })
             }
             "ZREM" => {
                 if args.len() < 2 {
@@ -4019,7 +4756,11 @@ impl CommandExecutor {
                 if args.len() != 3 {
                     return Err("ZCOUNT requires 3 arguments".to_string());
                 }
-                Ok(Command::ZCount(args[0].clone(), args[1].clone(), args[2].clone()))
+                Ok(Command::ZCount(
+                    args[0].clone(),
+                    args[1].clone(),
+                    args[2].clone(),
+                ))
             }
             "ZRANGEBYSCORE" => {
                 if args.len() < 3 {
@@ -4038,11 +4779,15 @@ impl CommandExecutor {
                         "WITHSCORES" => with_scores = true,
                         "LIMIT" => {
                             if i + 2 >= args.len() {
-                                return Err("ZRANGEBYSCORE LIMIT requires offset and count".to_string());
+                                return Err(
+                                    "ZRANGEBYSCORE LIMIT requires offset and count".to_string()
+                                );
                             }
-                            let offset: isize = args[i + 1].parse()
+                            let offset: isize = args[i + 1]
+                                .parse()
                                 .map_err(|_| "ZRANGEBYSCORE LIMIT offset must be integer")?;
-                            let count: usize = args[i + 2].parse()
+                            let count: usize = args[i + 2]
+                                .parse()
                                 .map_err(|_| "ZRANGEBYSCORE LIMIT count must be integer")?;
                             limit = Some((offset, count));
                             i += 2;
@@ -4051,7 +4796,13 @@ impl CommandExecutor {
                     }
                     i += 1;
                 }
-                Ok(Command::ZRangeByScore { key, min, max, with_scores, limit })
+                Ok(Command::ZRangeByScore {
+                    key,
+                    min,
+                    max,
+                    with_scores,
+                    limit,
+                })
             }
             "LMOVE" => {
                 if args.len() != 4 {
@@ -4105,7 +4856,10 @@ impl CommandExecutor {
                 }
                 Ok(Command::TypeOf(args[0].clone()))
             }
-            _ => Err(format!("ERR Unknown Redis command '{}' called from Lua", cmd_name)),
+            _ => Err(format!(
+                "ERR Unknown Redis command '{}' called from Lua",
+                cmd_name
+            )),
         }
     }
 
@@ -4138,7 +4892,7 @@ impl CommandExecutor {
                     return Err("SET requires at least 2 arguments".to_string());
                 }
                 let key = to_string(&args[0]);
-                let value = to_sds(&args[1]);  // Binary-safe
+                let value = to_sds(&args[1]); // Binary-safe
                 let mut ex = None;
                 let mut px = None;
                 let mut nx = false;
@@ -4157,20 +4911,36 @@ impl CommandExecutor {
                             if i >= args.len() {
                                 return Err("SET EX requires value".to_string());
                             }
-                            ex = Some(to_string(&args[i]).parse().map_err(|_| "SET EX must be integer")?);
+                            ex = Some(
+                                to_string(&args[i])
+                                    .parse()
+                                    .map_err(|_| "SET EX must be integer")?,
+                            );
                         }
                         "PX" => {
                             i += 1;
                             if i >= args.len() {
                                 return Err("SET PX requires value".to_string());
                             }
-                            px = Some(to_string(&args[i]).parse().map_err(|_| "SET PX must be integer")?);
+                            px = Some(
+                                to_string(&args[i])
+                                    .parse()
+                                    .map_err(|_| "SET PX must be integer")?,
+                            );
                         }
                         _ => return Err(format!("Unknown SET option: {}", opt)),
                     }
                     i += 1;
                 }
-                Ok(Command::Set { key, value, ex, px, nx, xx, get })
+                Ok(Command::Set {
+                    key,
+                    value,
+                    ex,
+                    px,
+                    nx,
+                    xx,
+                    get,
+                })
             }
             "DEL" => {
                 if args.is_empty() {
@@ -4231,7 +5001,11 @@ impl CommandExecutor {
                 let incr: i64 = to_string(&args[2])
                     .parse()
                     .map_err(|_| "HINCRBY increment must be integer".to_string())?;
-                Ok(Command::HIncrBy(to_string(&args[0]), to_sds(&args[1]), incr))
+                Ok(Command::HIncrBy(
+                    to_string(&args[0]),
+                    to_sds(&args[1]),
+                    incr,
+                ))
             }
             "LPUSH" => {
                 if args.len() < 2 {
@@ -4318,7 +5092,7 @@ impl CommandExecutor {
                     return Err("ZADD requires key and score-member pairs".to_string());
                 }
                 let key = to_string(&args[0]);
-                
+
                 // Parse optional flags
                 let mut nx = false;
                 let mut xx = false;
@@ -4326,23 +5100,38 @@ impl CommandExecutor {
                 let mut lt = false;
                 let mut ch = false;
                 let mut i = 1;
-                
+
                 while i < args.len() {
                     let opt = to_string(&args[i]).to_uppercase();
                     match opt.as_str() {
-                        "NX" => { nx = true; i += 1; }
-                        "XX" => { xx = true; i += 1; }
-                        "GT" => { gt = true; i += 1; }
-                        "LT" => { lt = true; i += 1; }
-                        "CH" => { ch = true; i += 1; }
+                        "NX" => {
+                            nx = true;
+                            i += 1;
+                        }
+                        "XX" => {
+                            xx = true;
+                            i += 1;
+                        }
+                        "GT" => {
+                            gt = true;
+                            i += 1;
+                        }
+                        "LT" => {
+                            lt = true;
+                            i += 1;
+                        }
+                        "CH" => {
+                            ch = true;
+                            i += 1;
+                        }
                         _ => break,
                     }
                 }
-                
+
                 if (args.len() - i) % 2 != 0 || i >= args.len() {
                     return Err("ZADD requires score-member pairs".to_string());
                 }
-                
+
                 let mut pairs: Vec<(f64, SDS)> = Vec::new();
                 while i < args.len() {
                     let score: f64 = to_string(&args[i])
@@ -4351,7 +5140,15 @@ impl CommandExecutor {
                     pairs.push((score, to_sds(&args[i + 1])));
                     i += 2;
                 }
-                Ok(Command::ZAdd { key, pairs, nx, xx, gt, lt, ch })
+                Ok(Command::ZAdd {
+                    key,
+                    pairs,
+                    nx,
+                    xx,
+                    gt,
+                    lt,
+                    ch,
+                })
             }
             "ZREM" => {
                 if args.len() < 2 {
@@ -4389,7 +5186,11 @@ impl CommandExecutor {
                 if args.len() != 3 {
                     return Err("ZCOUNT requires 3 arguments".to_string());
                 }
-                Ok(Command::ZCount(to_string(&args[0]), to_string(&args[1]), to_string(&args[2])))
+                Ok(Command::ZCount(
+                    to_string(&args[0]),
+                    to_string(&args[1]),
+                    to_string(&args[2]),
+                ))
             }
             "ZRANGEBYSCORE" => {
                 if args.len() < 3 {
@@ -4408,11 +5209,15 @@ impl CommandExecutor {
                         "WITHSCORES" => with_scores = true,
                         "LIMIT" => {
                             if i + 2 >= args.len() {
-                                return Err("ZRANGEBYSCORE LIMIT requires offset and count".to_string());
+                                return Err(
+                                    "ZRANGEBYSCORE LIMIT requires offset and count".to_string()
+                                );
                             }
-                            let offset: isize = to_string(&args[i + 1]).parse()
+                            let offset: isize = to_string(&args[i + 1])
+                                .parse()
                                 .map_err(|_| "ZRANGEBYSCORE LIMIT offset must be integer")?;
-                            let count: usize = to_string(&args[i + 2]).parse()
+                            let count: usize = to_string(&args[i + 2])
+                                .parse()
                                 .map_err(|_| "ZRANGEBYSCORE LIMIT count must be integer")?;
                             limit = Some((offset, count));
                             i += 2;
@@ -4421,7 +5226,13 @@ impl CommandExecutor {
                     }
                     i += 1;
                 }
-                Ok(Command::ZRangeByScore { key, min, max, with_scores, limit })
+                Ok(Command::ZRangeByScore {
+                    key,
+                    min,
+                    max,
+                    with_scores,
+                    limit,
+                })
             }
             "LMOVE" => {
                 if args.len() != 4 {
@@ -4475,7 +5286,10 @@ impl CommandExecutor {
                 }
                 Ok(Command::TypeOf(to_string(&args[0])))
             }
-            _ => Err(format!("ERR Unknown Redis command '{}' called from Lua", cmd_name)),
+            _ => Err(format!(
+                "ERR Unknown Redis command '{}' called from Lua",
+                cmd_name
+            )),
         }
     }
 
@@ -4499,11 +5313,9 @@ impl CommandExecutor {
                 // Redis converts floats to bulk strings
                 RespValue::BulkString(Some(n.to_string().into_bytes()))
             }
-            LuaValue::String(s) => {
-                match s.as_bytes() {
-                    b => RespValue::BulkString(Some(b.to_vec())),
-                }
-            }
+            LuaValue::String(s) => match s.as_bytes() {
+                b => RespValue::BulkString(Some(b.to_vec())),
+            },
             LuaValue::Table(t) => {
                 // Check for Redis error/ok convention first
                 if let Ok(err) = t.get::<String>("err") {
@@ -4551,19 +5363,32 @@ impl CommandExecutor {
             Some(Value::String(s)) => {
                 let current = match s.to_string().parse::<i64>() {
                     Ok(n) => n,
-                    Err(_) => return RespValue::Error("ERR value is not an integer or out of range".to_string()),
+                    Err(_) => {
+                        return RespValue::Error(
+                            "ERR value is not an integer or out of range".to_string(),
+                        )
+                    }
                 };
                 let new_value = match current.checked_add(increment) {
                     Some(n) => n,
-                    None => return RespValue::Error("ERR increment or decrement would overflow".to_string()),
+                    None => {
+                        return RespValue::Error(
+                            "ERR increment or decrement would overflow".to_string(),
+                        )
+                    }
                 };
                 let new_str = SDS::from_str(&new_value.to_string());
                 self.data.insert(key.to_string(), Value::String(new_str));
                 RespValue::Integer(new_value)
             }
-            Some(_) => RespValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+            Some(_) => RespValue::Error(
+                "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+            ),
             None => {
-                self.data.insert(key.to_string(), Value::String(SDS::from_str(&increment.to_string())));
+                self.data.insert(
+                    key.to_string(),
+                    Value::String(SDS::from_str(&increment.to_string())),
+                );
                 self.access_times.insert(key.to_string(), self.current_time);
                 RespValue::Integer(increment)
             }
@@ -4588,10 +5413,10 @@ impl CommandExecutor {
         if pattern == "*" {
             return true;
         }
-        
+
         let key_chars: Vec<char> = key.chars().collect();
         let pattern_chars: Vec<char> = pattern.chars().collect();
-        
+
         self.glob_match(&key_chars, &pattern_chars, 0, 0)
     }
 
@@ -4619,20 +5444,24 @@ impl CommandExecutor {
             if k_idx >= key.len() {
                 return false;
             }
-            
+
             let mut bracket_end = p_idx + 1;
             while bracket_end < pattern.len() && pattern[bracket_end] != ']' {
                 bracket_end += 1;
             }
-            
+
             if bracket_end >= pattern.len() {
                 return p_char == key[k_idx] && self.glob_match(key, pattern, k_idx + 1, p_idx + 1);
             }
-            
+
             let char_set: Vec<char> = pattern[p_idx + 1..bracket_end].to_vec();
             let negate = !char_set.is_empty() && char_set[0] == '^';
-            let chars_to_check = if negate { &char_set[1..] } else { &char_set[..] };
-            
+            let chars_to_check = if negate {
+                &char_set[1..]
+            } else {
+                &char_set[..]
+            };
+
             let mut matched = false;
             for &c in chars_to_check {
                 if c == key[k_idx] {
@@ -4640,11 +5469,11 @@ impl CommandExecutor {
                     break;
                 }
             }
-            
+
             if negate {
                 matched = !matched;
             }
-            
+
             if matched {
                 self.glob_match(key, pattern, k_idx + 1, bracket_end + 1)
             } else {

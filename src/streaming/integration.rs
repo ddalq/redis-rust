@@ -14,21 +14,19 @@
 //! ```
 
 use crate::production::ReplicatedShardedState;
-use crate::streaming::{
-    Compactor, CompactionConfig, CompactionWorker, CompactionWorkerHandle,
-    DeltaSinkSender, DeltaSinkReceiver, InMemoryObjectStore, LocalFsObjectStore,
-    ManifestManager, ObjectStore, RecoveryError,
-    RecoveryManager, RecoveryPhase, RecoveryStats,
-    StreamingConfig, ObjectStoreType, StreamingPersistence,
-    delta_sink_channel,
-};
 #[cfg(feature = "s3")]
 use crate::streaming::S3ObjectStore;
-use std::sync::Arc;
+use crate::streaming::{
+    delta_sink_channel, CompactionConfig, CompactionWorker, CompactionWorkerHandle, Compactor,
+    DeltaSinkReceiver, DeltaSinkSender, InMemoryObjectStore, LocalFsObjectStore, ManifestManager,
+    ObjectStore, ObjectStoreType, RecoveryError, RecoveryManager, RecoveryPhase, RecoveryStats,
+    StreamingConfig, StreamingPersistence,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
-use tracing::{info, error};
+use tracing::{error, info};
 
 /// Error type for integration operations
 #[derive(Debug)]
@@ -192,11 +190,7 @@ impl<S: ObjectStore + Clone + Send + Sync + 'static> StreamingIntegration<S> {
         &self,
         state: &ReplicatedShardedState,
     ) -> Result<RecoveryStats, IntegrationError> {
-        let recovery = RecoveryManager::new(
-            (*self.store).clone(),
-            &self.prefix,
-            self.replica_id,
-        );
+        let recovery = RecoveryManager::new((*self.store).clone(), &self.prefix, self.replica_id);
 
         if !recovery.needs_recovery().await? {
             info!("No existing persistence data found, starting fresh");
@@ -206,40 +200,33 @@ impl<S: ObjectStore + Clone + Send + Sync + 'static> StreamingIntegration<S> {
         info!("Starting recovery from object store");
 
         let recovered = recovery
-            .recover_with_progress(|progress| {
-                match progress.phase {
-                    RecoveryPhase::LoadingManifest => {
-                        info!("Loading manifest...");
-                    }
-                    RecoveryPhase::LoadingCheckpoint => {
-                        info!("Loading checkpoint...");
-                    }
-                    RecoveryPhase::LoadingSegments => {
-                        info!(
-                            "Loading segments ({}/{})...",
-                            progress.segments_loaded, progress.segments_total
-                        );
-                    }
-                    RecoveryPhase::Complete => {
-                        info!(
-                            "Recovery complete: {} segments, {} deltas, {} bytes",
-                            progress.segments_loaded,
-                            progress.deltas_replayed,
-                            progress.bytes_read
-                        );
-                    }
-                    _ => {}
+            .recover_with_progress(|progress| match progress.phase {
+                RecoveryPhase::LoadingManifest => {
+                    info!("Loading manifest...");
                 }
+                RecoveryPhase::LoadingCheckpoint => {
+                    info!("Loading checkpoint...");
+                }
+                RecoveryPhase::LoadingSegments => {
+                    info!(
+                        "Loading segments ({}/{})...",
+                        progress.segments_loaded, progress.segments_total
+                    );
+                }
+                RecoveryPhase::Complete => {
+                    info!(
+                        "Recovery complete: {} segments, {} deltas, {} bytes",
+                        progress.segments_loaded, progress.deltas_replayed, progress.bytes_read
+                    );
+                }
+                _ => {}
             })
             .await?;
 
         // Apply recovered state
         state.apply_recovered_state(recovered.checkpoint_state, recovered.deltas);
 
-        info!(
-            "Applied recovered state: {} keys",
-            state.key_count().await
-        );
+        info!("Applied recovered state: {} keys", state.key_count().await);
 
         Ok(recovered.stats)
     }
@@ -287,7 +274,13 @@ impl<S: ObjectStore + Clone + Send + Sync + 'static> StreamingIntegration<S> {
         let actor_handle_clone = actor_handle.clone();
         let flush_interval = self.config.write_buffer.flush_interval;
         let bridge_task = tokio::spawn(async move {
-            run_delta_sink_bridge(receiver, actor_handle_clone, bridge_shutdown, flush_interval).await;
+            run_delta_sink_bridge(
+                receiver,
+                actor_handle_clone,
+                bridge_shutdown,
+                flush_interval,
+            )
+            .await;
         });
 
         info!(
@@ -388,12 +381,21 @@ pub trait StreamingIntegrationTrait: Send + Sync {
     fn recover<'a>(
         &'a self,
         state: &'a ReplicatedShardedState,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RecoveryStats, IntegrationError>> + Send + 'a>>;
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<RecoveryStats, IntegrationError>> + Send + 'a>,
+    >;
 
     /// Start workers
     fn start_workers<'a>(
         &'a self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(WorkerHandles, DeltaSinkSender), IntegrationError>> + Send + 'a>>;
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<(WorkerHandles, DeltaSinkSender), IntegrationError>,
+                > + Send
+                + 'a,
+        >,
+    >;
 }
 
 /// Wrapper enum for type erasure
@@ -408,7 +410,9 @@ impl StreamingIntegrationTrait for StreamingIntegrationWrapper {
     fn recover<'a>(
         &'a self,
         state: &'a ReplicatedShardedState,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RecoveryStats, IntegrationError>> + Send + 'a>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<RecoveryStats, IntegrationError>> + Send + 'a>,
+    > {
         match self {
             StreamingIntegrationWrapper::InMemory(i) => Box::pin(i.recover(state)),
             StreamingIntegrationWrapper::LocalFs(i) => Box::pin(i.recover(state)),
@@ -419,7 +423,14 @@ impl StreamingIntegrationTrait for StreamingIntegrationWrapper {
 
     fn start_workers<'a>(
         &'a self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(WorkerHandles, DeltaSinkSender), IntegrationError>> + Send + 'a>> {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<(WorkerHandles, DeltaSinkSender), IntegrationError>,
+                > + Send
+                + 'a,
+        >,
+    > {
         match self {
             StreamingIntegrationWrapper::InMemory(i) => Box::pin(i.start_workers()),
             StreamingIntegrationWrapper::LocalFs(i) => Box::pin(i.start_workers()),
@@ -450,9 +461,7 @@ pub enum PersistenceMessage {
     /// Check and flush if needed (periodic tick)
     Tick,
     /// Shutdown the actor
-    Shutdown {
-        response_tx: oneshot::Sender<()>,
-    },
+    Shutdown { response_tx: oneshot::Sender<()> },
 }
 
 /// Actor that owns StreamingPersistence exclusively
@@ -462,7 +471,10 @@ struct PersistenceActor<S: ObjectStore + Clone + 'static> {
 }
 
 impl<S: ObjectStore + Clone + Send + Sync + 'static> PersistenceActor<S> {
-    fn new(persistence: StreamingPersistence<S>, rx: mpsc::UnboundedReceiver<PersistenceMessage>) -> Self {
+    fn new(
+        persistence: StreamingPersistence<S>,
+        rx: mpsc::UnboundedReceiver<PersistenceMessage>,
+    ) -> Self {
         PersistenceActor { persistence, rx }
     }
 
@@ -495,8 +507,11 @@ impl<S: ObjectStore + Clone + Send + Sync + 'static> PersistenceActor<S> {
                     }
                 }
                 PersistenceMessage::Flush { response_tx } => {
-                    let result = self.persistence.flush().await
-                        .map(|_| ())  // Discard FlushResult, just return ()
+                    let result = self
+                        .persistence
+                        .flush()
+                        .await
+                        .map(|_| ()) // Discard FlushResult, just return ()
                         .map_err(|e| e.to_string());
                     let _ = response_tx.send(result);
                 }
@@ -547,10 +562,16 @@ impl PersistenceActorHandle {
     /// Force a flush and wait for completion
     pub async fn flush(&self) -> Result<(), String> {
         let (response_tx, response_rx) = oneshot::channel();
-        if self.tx.send(PersistenceMessage::Flush { response_tx }).is_err() {
+        if self
+            .tx
+            .send(PersistenceMessage::Flush { response_tx })
+            .is_err()
+        {
             return Err("Persistence actor unavailable".to_string());
         }
-        response_rx.await.unwrap_or(Err("Response channel dropped".to_string()))
+        response_rx
+            .await
+            .unwrap_or(Err("Response channel dropped".to_string()))
     }
 
     /// Send periodic tick (fire-and-forget)
@@ -562,7 +583,11 @@ impl PersistenceActorHandle {
     /// Shutdown the actor gracefully
     pub async fn shutdown(&self) {
         let (response_tx, response_rx) = oneshot::channel();
-        if self.tx.send(PersistenceMessage::Shutdown { response_tx }).is_ok() {
+        if self
+            .tx
+            .send(PersistenceMessage::Shutdown { response_tx })
+            .is_ok()
+        {
             let _ = response_rx.await;
         }
     }
@@ -622,7 +647,7 @@ async fn run_delta_sink_bridge(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::replication::{ReplicationConfig, ConsistencyLevel};
+    use crate::replication::{ConsistencyLevel, ReplicationConfig};
 
     #[tokio::test]
     async fn test_integration_in_memory() {

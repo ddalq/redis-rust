@@ -65,7 +65,8 @@ impl SimulatedNode {
 
     /// Generate state digest for anti-entropy
     pub fn generate_digest(&self) -> StateDigest {
-        self.anti_entropy.generate_digest(&self.replica_state.replicated_keys)
+        self.anti_entropy
+            .generate_digest(&self.replica_state.replicated_keys)
     }
 
     /// Get all keys for anti-entropy sync
@@ -113,7 +114,9 @@ impl SimulatedNode {
             // Also apply to command executor for GET to work
             if !delta.value.is_tombstone() {
                 if let Some(value) = delta.value.get() {
-                    let _ = self.executor.execute(&Command::set(delta.key.clone(), value.clone()));
+                    let _ = self
+                        .executor
+                        .execute(&Command::set(delta.key.clone(), value.clone()));
                 }
             } else {
                 let _ = self.executor.execute(&Command::del(delta.key.clone()));
@@ -127,7 +130,8 @@ impl SimulatedNode {
             if rv.is_tombstone() {
                 None
             } else {
-                rv.get().map(|sds| String::from_utf8_lossy(sds.as_bytes()).to_string())
+                rv.get()
+                    .map(|sds| String::from_utf8_lossy(sds.as_bytes()).to_string())
             }
         })
     }
@@ -235,7 +239,12 @@ impl MultiNodeSimulation {
             let my_replica = ReplicaId::new(i as u64 + 1);
             let peer_addresses: HashMap<ReplicaId, String> = (0..num_nodes)
                 .filter(|&j| j != i)
-                .map(|j| (ReplicaId::new(j as u64 + 1), format!("127.0.0.1:{}", 3000 + j)))
+                .map(|j| {
+                    (
+                        ReplicaId::new(j as u64 + 1),
+                        format!("127.0.0.1:{}", 3000 + j),
+                    )
+                })
                 .collect();
             let router = GossipRouter::new(hash_ring.clone(), my_replica, peer_addresses, true);
             gossip_routers.insert(i, router);
@@ -338,12 +347,14 @@ impl MultiNodeSimulation {
 
             if !divergent.is_empty() {
                 // Get keys in divergent buckets from both nodes
-                let deltas_a = self.nodes[node_a]
-                    .anti_entropy
-                    .get_keys_in_buckets(&self.nodes[node_a].replica_state.replicated_keys, &divergent);
-                let deltas_b = self.nodes[node_b]
-                    .anti_entropy
-                    .get_keys_in_buckets(&self.nodes[node_b].replica_state.replicated_keys, &divergent);
+                let deltas_a = self.nodes[node_a].anti_entropy.get_keys_in_buckets(
+                    &self.nodes[node_a].replica_state.replicated_keys,
+                    &divergent,
+                );
+                let deltas_b = self.nodes[node_b].anti_entropy.get_keys_in_buckets(
+                    &self.nodes[node_b].replica_state.replicated_keys,
+                    &divergent,
+                );
 
                 // Apply deltas bidirectionally
                 self.nodes[node_b].apply_remote_deltas(deltas_a);
@@ -581,11 +592,7 @@ mod tests {
         let mut sim = MultiNodeSimulation::new(3, 42);
 
         // Write on node 0
-        sim.execute(
-            1,
-            0,
-            Command::set("key1".into(), SDS::from_str("value1")),
-        );
+        sim.execute(1, 0, Command::set("key1".into(), SDS::from_str("value1")));
 
         // Gossip round
         sim.gossip_round();
@@ -595,7 +602,10 @@ mod tests {
         // Check convergence
         assert!(sim.check_key_convergence("key1"));
         for node in &sim.nodes {
-            assert_eq!(node.get_replicated_value("key1"), Some("value1".to_string()));
+            assert_eq!(
+                node.get_replicated_value("key1"),
+                Some("value1".to_string())
+            );
         }
     }
 
@@ -608,11 +618,7 @@ mod tests {
         sim.partition(1, 2);
 
         // Write on node 0
-        sim.execute(
-            1,
-            0,
-            Command::set("key1".into(), SDS::from_str("value_a")),
-        );
+        sim.execute(1, 0, Command::set("key1".into(), SDS::from_str("value_a")));
 
         // Gossip rounds while partitioned
         for _ in 0..5 {
@@ -621,7 +627,10 @@ mod tests {
         }
 
         // Node 2 should not have the value
-        assert_eq!(sim.nodes[1].get_replicated_value("key1"), Some("value_a".to_string()));
+        assert_eq!(
+            sim.nodes[1].get_replicated_value("key1"),
+            Some("value_a".to_string())
+        );
         assert_eq!(sim.nodes[2].get_replicated_value("key1"), None);
 
         // Heal partition
@@ -629,11 +638,7 @@ mod tests {
         sim.heal_partition(1, 2);
 
         // Write again to trigger gossip
-        sim.execute(
-            1,
-            0,
-            Command::set("key1".into(), SDS::from_str("value_b")),
-        );
+        sim.execute(1, 0, Command::set("key1".into(), SDS::from_str("value_b")));
 
         // Gossip rounds after healing
         for _ in 0..5 {

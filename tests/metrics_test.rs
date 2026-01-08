@@ -171,7 +171,11 @@ fn test_updown_counter_negative_result() {
     let tags = TagSet::from_pairs(&[("queue", "jobs")]);
 
     state.submit(MetricPoint::up_down_counter("queue.depth", tags.clone(), 5));
-    state.submit(MetricPoint::up_down_counter("queue.depth", tags.clone(), -10));
+    state.submit(MetricPoint::up_down_counter(
+        "queue.depth",
+        tags.clone(),
+        -10,
+    ));
 
     let key = MetricKeyEncoder::encode("queue.depth", MetricType::UpDownCounter, &tags);
     assert_eq!(state.get_up_down_counter(&key), -5);
@@ -486,12 +490,7 @@ fn test_multi_node_counter_convergence() {
 
     // All nodes should converge to 450
     for (i, node) in nodes.iter().enumerate() {
-        assert_eq!(
-            node.get_counter(&key),
-            450,
-            "Node {} did not converge",
-            i
-        );
+        assert_eq!(node.get_counter(&key), 450, "Node {} did not converge", i);
     }
 }
 

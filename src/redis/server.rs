@@ -1,6 +1,6 @@
-use super::{CommandExecutor, Command, RespParser};
 use super::resp::RespValue;
-use crate::simulator::{HostId, Simulation, Event, EventType};
+use super::{Command, CommandExecutor, RespParser};
+use crate::simulator::{Event, EventType, HostId, Simulation};
 use std::collections::HashMap;
 
 fn encode_with_request_id(request_id: u64, payload: Vec<u8>) -> Vec<u8> {
@@ -15,8 +15,7 @@ fn decode_request_id(data: &[u8]) -> Option<(u64, &[u8])> {
         return None;
     }
     let request_id = u64::from_le_bytes([
-        data[0], data[1], data[2], data[3],
-        data[4], data[5], data[6], data[7],
+        data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
     ]);
     Some((request_id, &data[8..]))
 }
@@ -35,10 +34,11 @@ impl RedisServer {
             epoch_initialized: false,
         }
     }
-    
+
     fn ensure_epoch_initialized(&mut self, sim: &Simulation) {
         if !self.epoch_initialized {
-            self.executor.set_simulation_start_epoch(sim.simulation_start_epoch());
+            self.executor
+                .set_simulation_start_epoch(sim.simulation_start_epoch());
             self.epoch_initialized = true;
         }
     }
@@ -57,7 +57,8 @@ impl RedisServer {
                         if let Ok(cmd) = Command::from_resp(&resp_value) {
                             let response = self.executor.execute(&cmd);
                             let response_bytes = RespParser::encode(&response);
-                            let framed_response = encode_with_request_id(request_id, response_bytes);
+                            let framed_response =
+                                encode_with_request_id(request_id, response_bytes);
                             sim.send_message(self.host_id, msg.from, framed_response);
                         }
                     }
@@ -66,7 +67,11 @@ impl RedisServer {
             EventType::HostStart => {
                 self.ensure_epoch_initialized(sim);
                 self.executor.set_time(sim.current_time());
-                println!("[{:?}] Redis server started on host {:?}", sim.current_time(), self.host_id);
+                println!(
+                    "[{:?}] Redis server started on host {:?}",
+                    sim.current_time(),
+                    self.host_id
+                );
             }
             _ => {}
         }
@@ -93,7 +98,7 @@ impl RedisClient {
     pub fn send_command(&mut self, sim: &mut Simulation, cmd_bytes: Vec<u8>) -> u64 {
         let request_id = self.next_request_id;
         self.next_request_id += 1;
-        
+
         let framed_message = encode_with_request_id(request_id, cmd_bytes);
         sim.send_message(self.host_id, self.server_id, framed_message);
         request_id

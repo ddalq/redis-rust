@@ -67,15 +67,9 @@ pub enum ScalingDecision {
     /// No scaling needed
     NoChange,
     /// Add a new shard to handle increased load
-    AddShard {
-        reason: String,
-        current_load: f64,
-    },
+    AddShard { reason: String, current_load: f64 },
     /// Remove an underutilized shard
-    RemoveShard {
-        shard_id: usize,
-        reason: String,
-    },
+    RemoveShard { shard_id: usize, reason: String },
     /// Rebalance keys between shards (informational)
     RebalanceRecommended {
         from_shard: usize,
@@ -131,11 +125,9 @@ impl ShardLoadBalancer {
         // Invariant 3: Each shard metric should have matching shard_id
         for (&id, metrics) in &self.shard_metrics {
             debug_assert_eq!(
-                id,
-                metrics.shard_id,
+                id, metrics.shard_id,
                 "Invariant violated: shard_metrics key {} != metrics.shard_id {}",
-                id,
-                metrics.shard_id
+                id, metrics.shard_id
             );
         }
 
@@ -213,7 +205,8 @@ impl ShardLoadBalancer {
         }
 
         // Calculate load statistics
-        let loads: Vec<(usize, f64)> = self.shard_metrics
+        let loads: Vec<(usize, f64)> = self
+            .shard_metrics
             .iter()
             .map(|(&id, m)| (id, m.load_score()))
             .collect();
@@ -226,12 +219,12 @@ impl ShardLoadBalancer {
 
         // Find most and least loaded shards
         // TigerStyle: Use unwrap_or for NaN safety instead of unwrap
-        let most_loaded = loads.iter().max_by(|a, b| {
-            a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        let least_loaded = loads.iter().min_by(|a, b| {
-            a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        let most_loaded = loads
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let least_loaded = loads
+            .iter()
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Check for imbalance
         if min_load > 0.0 && max_load / min_load > self.config.max_imbalance {
@@ -251,10 +244,7 @@ impl ShardLoadBalancer {
                 || total_keys > self.config.min_keys_for_split * self.num_shards
             {
                 return ScalingDecision::AddShard {
-                    reason: format!(
-                        "High load: {:.0} ops/sec avg, {} keys",
-                        avg_ops, total_keys
-                    ),
+                    reason: format!("High load: {:.0} ops/sec avg, {} keys", avg_ops, total_keys),
                     current_load: total_ops,
                 };
             }
@@ -283,7 +273,8 @@ impl ShardLoadBalancer {
 
     /// Add a new shard to tracking
     pub fn add_shard(&mut self, shard_id: usize) {
-        self.shard_metrics.insert(shard_id, ShardMetrics::new(shard_id));
+        self.shard_metrics
+            .insert(shard_id, ShardMetrics::new(shard_id));
         self.num_shards += 1;
     }
 
@@ -298,7 +289,11 @@ impl ShardLoadBalancer {
     pub fn get_distribution(&self) -> Vec<(usize, f64)> {
         let total_load: f64 = self.shard_metrics.values().map(|m| m.load_score()).sum();
         if total_load == 0.0 {
-            return self.shard_metrics.keys().map(|&id| (id, 100.0 / self.num_shards as f64)).collect();
+            return self
+                .shard_metrics
+                .keys()
+                .map(|&id| (id, 100.0 / self.num_shards as f64))
+                .collect();
         }
 
         self.shard_metrics
@@ -311,11 +306,19 @@ impl ShardLoadBalancer {
     pub fn get_stats(&self) -> LoadBalancerStats {
         let total_ops: f64 = self.shard_metrics.values().map(|m| m.ops_per_second).sum();
         let total_keys: usize = self.shard_metrics.values().map(|m| m.key_count).sum();
-        let loads: Vec<f64> = self.shard_metrics.values().map(|m| m.load_score()).collect();
+        let loads: Vec<f64> = self
+            .shard_metrics
+            .values()
+            .map(|m| m.load_score())
+            .collect();
 
         let min_load = loads.iter().cloned().fold(f64::MAX, f64::min);
         let max_load = loads.iter().cloned().fold(f64::MIN, f64::max);
-        let avg_load = if loads.is_empty() { 0.0 } else { loads.iter().sum::<f64>() / loads.len() as f64 };
+        let avg_load = if loads.is_empty() {
+            0.0
+        } else {
+            loads.iter().sum::<f64>() / loads.len() as f64
+        };
 
         LoadBalancerStats {
             num_shards: self.num_shards,
@@ -324,7 +327,11 @@ impl ShardLoadBalancer {
             min_load,
             max_load,
             avg_load,
-            imbalance_ratio: if min_load > 0.0 { max_load / min_load } else { 1.0 },
+            imbalance_ratio: if min_load > 0.0 {
+                max_load / min_load
+            } else {
+                1.0
+            },
         }
     }
 
@@ -370,12 +377,15 @@ mod tests {
 
         // Equal load across all shards
         for i in 0..4 {
-            balancer.update_metrics(i, ShardMetrics {
-                shard_id: i,
-                key_count: 1000,
-                ops_per_second: 1000.0,
-                ..Default::default()
-            });
+            balancer.update_metrics(
+                i,
+                ShardMetrics {
+                    shard_id: i,
+                    key_count: 1000,
+                    ops_per_second: 1000.0,
+                    ..Default::default()
+                },
+            );
         }
 
         let decision = balancer.analyze(1000);
@@ -392,22 +402,32 @@ mod tests {
         let mut balancer = ShardLoadBalancer::new(4, config);
 
         // Create imbalance: shard 0 has 10x the load
-        balancer.update_metrics(0, ShardMetrics {
-            shard_id: 0,
-            ops_per_second: 10000.0,
-            ..Default::default()
-        });
-        for i in 1..4 {
-            balancer.update_metrics(i, ShardMetrics {
-                shard_id: i,
-                ops_per_second: 1000.0,
+        balancer.update_metrics(
+            0,
+            ShardMetrics {
+                shard_id: 0,
+                ops_per_second: 10000.0,
                 ..Default::default()
-            });
+            },
+        );
+        for i in 1..4 {
+            balancer.update_metrics(
+                i,
+                ShardMetrics {
+                    shard_id: i,
+                    ops_per_second: 1000.0,
+                    ..Default::default()
+                },
+            );
         }
 
         let decision = balancer.analyze(1000);
         match decision {
-            ScalingDecision::RebalanceRecommended { from_shard, imbalance_ratio, .. } => {
+            ScalingDecision::RebalanceRecommended {
+                from_shard,
+                imbalance_ratio,
+                ..
+            } => {
                 assert_eq!(from_shard, 0);
                 assert!(imbalance_ratio > 2.0);
             }
@@ -426,16 +446,22 @@ mod tests {
         let mut balancer = ShardLoadBalancer::new(2, config);
 
         // High load that should trigger scale up
-        balancer.update_metrics(0, ShardMetrics {
-            shard_id: 0,
-            ops_per_second: 20000.0,
-            ..Default::default()
-        });
-        balancer.update_metrics(1, ShardMetrics {
-            shard_id: 1,
-            ops_per_second: 20000.0,
-            ..Default::default()
-        });
+        balancer.update_metrics(
+            0,
+            ShardMetrics {
+                shard_id: 0,
+                ops_per_second: 20000.0,
+                ..Default::default()
+            },
+        );
+        balancer.update_metrics(
+            1,
+            ShardMetrics {
+                shard_id: 1,
+                ops_per_second: 20000.0,
+                ..Default::default()
+            },
+        );
 
         let decision = balancer.analyze(1000);
         match decision {
@@ -456,11 +482,14 @@ mod tests {
         balancer.scaling_performed(1000);
 
         // High load but within cooldown
-        balancer.update_metrics(0, ShardMetrics {
-            shard_id: 0,
-            ops_per_second: 50000.0,
-            ..Default::default()
-        });
+        balancer.update_metrics(
+            0,
+            ShardMetrics {
+                shard_id: 0,
+                ops_per_second: 50000.0,
+                ..Default::default()
+            },
+        );
 
         let decision = balancer.analyze(5000); // Only 4 seconds later
         assert_eq!(decision, ScalingDecision::NoChange);
@@ -472,22 +501,32 @@ mod tests {
         let mut balancer = ShardLoadBalancer::new(4, config);
 
         // 50% on shard 0, 50% split among others
-        balancer.update_metrics(0, ShardMetrics {
-            shard_id: 0,
-            ops_per_second: 600.0,
-            ..Default::default()
-        });
-        for i in 1..4 {
-            balancer.update_metrics(i, ShardMetrics {
-                shard_id: i,
-                ops_per_second: 200.0,
+        balancer.update_metrics(
+            0,
+            ShardMetrics {
+                shard_id: 0,
+                ops_per_second: 600.0,
                 ..Default::default()
-            });
+            },
+        );
+        for i in 1..4 {
+            balancer.update_metrics(
+                i,
+                ShardMetrics {
+                    shard_id: i,
+                    ops_per_second: 200.0,
+                    ..Default::default()
+                },
+            );
         }
 
         let dist = balancer.get_distribution();
         // Shard 0 should have about 50% of the load
-        let shard_0_pct = dist.iter().find(|(id, _)| *id == 0).map(|(_, p)| *p).unwrap_or(0.0);
+        let shard_0_pct = dist
+            .iter()
+            .find(|(id, _)| *id == 0)
+            .map(|(_, p)| *p)
+            .unwrap_or(0.0);
         assert!(shard_0_pct > 40.0 && shard_0_pct < 60.0);
     }
 
@@ -497,12 +536,15 @@ mod tests {
         let mut balancer = ShardLoadBalancer::new(2, config);
 
         // Initial update
-        balancer.update_metrics(0, ShardMetrics {
-            shard_id: 0,
-            ops_per_second: 0.0,
-            last_update_ms: 0,
-            ..Default::default()
-        });
+        balancer.update_metrics(
+            0,
+            ShardMetrics {
+                shard_id: 0,
+                ops_per_second: 0.0,
+                last_update_ms: 0,
+                ..Default::default()
+            },
+        );
 
         // Record high ops
         balancer.record_ops(0, 1000, 1000);

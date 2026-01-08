@@ -145,9 +145,7 @@ async fn handle_connection(
                 Err(ParseError::Incomplete) => break,
                 Err(ParseError::Invalid(msg)) => {
                     warn!("Parse error from {}: {}", peer_addr, msg);
-                    response_buffer.extend_from_slice(
-                        format!("-ERR {}\r\n", msg).as_bytes()
-                    );
+                    response_buffer.extend_from_slice(format!("-ERR {}\r\n", msg).as_bytes());
                     buffer.clear();
                     break;
                 }
@@ -158,7 +156,10 @@ async fn handle_connection(
         if !response_buffer.is_empty() {
             stream.write_all(&response_buffer).await?;
             stream.flush().await?;
-            debug!("Processed {} commands from {}", commands_processed, peer_addr);
+            debug!(
+                "Processed {} commands from {}",
+                commands_processed, peer_addr
+            );
         }
     }
 
@@ -184,7 +185,8 @@ fn parse_command(buffer: &BytesMut) -> Result<(MetricsCommand, usize), ParseErro
 
 /// Parse RESP array command
 fn parse_resp_command(buffer: &BytesMut) -> Result<(MetricsCommand, usize), ParseError> {
-    let s = std::str::from_utf8(buffer).map_err(|_| ParseError::Invalid("Invalid UTF-8".to_string()))?;
+    let s = std::str::from_utf8(buffer)
+        .map_err(|_| ParseError::Invalid("Invalid UTF-8".to_string()))?;
 
     // Find end of array count
     let first_crlf = s.find("\r\n").ok_or(ParseError::Incomplete)?;
@@ -220,15 +222,15 @@ fn parse_resp_command(buffer: &BytesMut) -> Result<(MetricsCommand, usize), Pars
         pos = data_end + 2;
     }
 
-    let cmd = MetricsCommand::parse(&args)
-        .map_err(|e| ParseError::Invalid(e))?;
+    let cmd = MetricsCommand::parse(&args).map_err(|e| ParseError::Invalid(e))?;
 
     Ok((cmd, pos))
 }
 
 /// Parse inline command (space-separated)
 fn parse_inline_command(buffer: &BytesMut) -> Result<(MetricsCommand, usize), ParseError> {
-    let s = std::str::from_utf8(buffer).map_err(|_| ParseError::Invalid("Invalid UTF-8".to_string()))?;
+    let s = std::str::from_utf8(buffer)
+        .map_err(|_| ParseError::Invalid("Invalid UTF-8".to_string()))?;
 
     let crlf = s.find("\r\n").ok_or(ParseError::Incomplete)?;
     let line = &s[..crlf];
@@ -238,8 +240,7 @@ fn parse_inline_command(buffer: &BytesMut) -> Result<(MetricsCommand, usize), Pa
         return Err(ParseError::Invalid("Empty command".to_string()));
     }
 
-    let cmd = MetricsCommand::parse(&args)
-        .map_err(|e| ParseError::Invalid(e))?;
+    let cmd = MetricsCommand::parse(&args).map_err(|e| ParseError::Invalid(e))?;
 
     Ok((cmd, crlf + 2))
 }

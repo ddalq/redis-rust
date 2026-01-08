@@ -61,11 +61,7 @@ pub fn persistence_span(operation: &str) -> Span {
 /// Create a span for TTL eviction
 #[inline]
 pub fn ttl_span() -> Span {
-    span!(
-        Level::DEBUG,
-        "redis.ttl_eviction",
-        otel.kind = "internal"
-    )
+    span!(Level::DEBUG, "redis.ttl_eviction", otel.kind = "internal")
 }
 
 /// Create a span for network I/O

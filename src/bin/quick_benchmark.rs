@@ -2,11 +2,11 @@
 //!
 //! TigerStyle: Graceful error handling instead of panics
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::Instant;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -83,7 +83,10 @@ async fn run_client_benchmark<F>(
     }
 }
 
-async fn benchmark_ping(num_requests: usize, num_clients: usize) -> Result<(), Box<dyn std::error::Error>> {
+async fn benchmark_ping(
+    num_requests: usize,
+    num_clients: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let completed = Arc::new(AtomicU64::new(0));
     let errors = Arc::new(AtomicU64::new(0));
@@ -95,12 +98,10 @@ async fn benchmark_ping(num_requests: usize, num_clients: usize) -> Result<(), B
         let completed = completed.clone();
         let errors = errors.clone();
         let handle = tokio::spawn(async move {
-            run_client_benchmark(
-                requests_per_client,
-                completed,
-                errors,
-                |_| b"*1\r\n$4\r\nPING\r\n".to_vec(),
-            ).await;
+            run_client_benchmark(requests_per_client, completed, errors, |_| {
+                b"*1\r\n$4\r\nPING\r\n".to_vec()
+            })
+            .await;
         });
         handles.push(handle);
     }
@@ -117,7 +118,10 @@ async fn benchmark_ping(num_requests: usize, num_clients: usize) -> Result<(), B
     Ok(())
 }
 
-async fn benchmark_set(num_requests: usize, num_clients: usize) -> Result<(), Box<dyn std::error::Error>> {
+async fn benchmark_set(
+    num_requests: usize,
+    num_clients: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let completed = Arc::new(AtomicU64::new(0));
     let errors = Arc::new(AtomicU64::new(0));
@@ -129,15 +133,14 @@ async fn benchmark_set(num_requests: usize, num_clients: usize) -> Result<(), Bo
         let completed = completed.clone();
         let errors = errors.clone();
         let handle = tokio::spawn(async move {
-            run_client_benchmark(
-                requests_per_client,
-                completed,
-                errors,
-                move |i| format!(
+            run_client_benchmark(requests_per_client, completed, errors, move |i| {
+                format!(
                     "*3\r\n$3\r\nSET\r\n$6\r\nbm:{}:{}\r\n$5\r\nvalue\r\n",
                     client_id, i
-                ).into_bytes(),
-            ).await;
+                )
+                .into_bytes()
+            })
+            .await;
         });
         handles.push(handle);
     }
@@ -154,7 +157,10 @@ async fn benchmark_set(num_requests: usize, num_clients: usize) -> Result<(), Bo
     Ok(())
 }
 
-async fn benchmark_get_existing(num_requests: usize, num_clients: usize) -> Result<(), Box<dyn std::error::Error>> {
+async fn benchmark_get_existing(
+    num_requests: usize,
+    num_clients: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let completed = Arc::new(AtomicU64::new(0));
     let errors = Arc::new(AtomicU64::new(0));
@@ -166,18 +172,11 @@ async fn benchmark_get_existing(num_requests: usize, num_clients: usize) -> Resu
         let completed = completed.clone();
         let errors = errors.clone();
         let handle = tokio::spawn(async move {
-            run_client_benchmark(
-                requests_per_client,
-                completed,
-                errors,
-                move |i| {
-                    let key_id = i % 200;
-                    format!(
-                        "*2\r\n$3\r\nGET\r\n$6\r\nbm:{}:{}\r\n",
-                        client_id, key_id
-                    ).into_bytes()
-                },
-            ).await;
+            run_client_benchmark(requests_per_client, completed, errors, move |i| {
+                let key_id = i % 200;
+                format!("*2\r\n$3\r\nGET\r\n$6\r\nbm:{}:{}\r\n", client_id, key_id).into_bytes()
+            })
+            .await;
         });
         handles.push(handle);
     }
@@ -194,7 +193,10 @@ async fn benchmark_get_existing(num_requests: usize, num_clients: usize) -> Resu
     Ok(())
 }
 
-async fn benchmark_incr(num_requests: usize, num_clients: usize) -> Result<(), Box<dyn std::error::Error>> {
+async fn benchmark_incr(
+    num_requests: usize,
+    num_clients: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let completed = Arc::new(AtomicU64::new(0));
     let errors = Arc::new(AtomicU64::new(0));
@@ -207,12 +209,8 @@ async fn benchmark_incr(num_requests: usize, num_clients: usize) -> Result<(), B
         let errors = errors.clone();
         let handle = tokio::spawn(async move {
             let cmd = format!("*2\r\n$4\r\nINCR\r\n$6\r\nctr:{}\r\n", client_id).into_bytes();
-            run_client_benchmark(
-                requests_per_client,
-                completed,
-                errors,
-                move |_| cmd.clone(),
-            ).await;
+            run_client_benchmark(requests_per_client, completed, errors, move |_| cmd.clone())
+                .await;
         });
         handles.push(handle);
     }
@@ -229,7 +227,10 @@ async fn benchmark_incr(num_requests: usize, num_clients: usize) -> Result<(), B
     Ok(())
 }
 
-async fn benchmark_mixed(num_requests: usize, num_clients: usize) -> Result<(), Box<dyn std::error::Error>> {
+async fn benchmark_mixed(
+    num_requests: usize,
+    num_clients: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let completed = Arc::new(AtomicU64::new(0));
     let errors = Arc::new(AtomicU64::new(0));
@@ -241,25 +242,23 @@ async fn benchmark_mixed(num_requests: usize, num_clients: usize) -> Result<(), 
         let completed = completed.clone();
         let errors = errors.clone();
         let handle = tokio::spawn(async move {
-            run_client_benchmark(
-                requests_per_client,
-                completed,
-                errors,
-                move |i| {
-                    match i % 4 {
-                        0 => format!(
-                            "*3\r\n$3\r\nSET\r\n$6\r\nmx:{}:{}\r\n$5\r\nvalue\r\n",
-                            client_id, i
-                        ),
-                        1 => format!(
-                            "*2\r\n$3\r\nGET\r\n$6\r\nmx:{}:{}\r\n",
-                            client_id, i.saturating_sub(1)
-                        ),
-                        2 => format!("*2\r\n$4\r\nINCR\r\n$7\r\nmxc:{}\r\n", client_id),
-                        _ => "*1\r\n$4\r\nPING\r\n".to_string(),
-                    }.into_bytes()
-                },
-            ).await;
+            run_client_benchmark(requests_per_client, completed, errors, move |i| {
+                match i % 4 {
+                    0 => format!(
+                        "*3\r\n$3\r\nSET\r\n$6\r\nmx:{}:{}\r\n$5\r\nvalue\r\n",
+                        client_id, i
+                    ),
+                    1 => format!(
+                        "*2\r\n$3\r\nGET\r\n$6\r\nmx:{}:{}\r\n",
+                        client_id,
+                        i.saturating_sub(1)
+                    ),
+                    2 => format!("*2\r\n$4\r\nINCR\r\n$7\r\nmxc:{}\r\n", client_id),
+                    _ => "*1\r\n$4\r\nPING\r\n".to_string(),
+                }
+                .into_bytes()
+            })
+            .await;
         });
         handles.push(handle);
     }

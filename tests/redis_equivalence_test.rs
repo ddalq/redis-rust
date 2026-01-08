@@ -42,9 +42,7 @@ impl Response {
         match v {
             redis::Value::Nil => Response::Nil,
             redis::Value::Int(i) => Response::Int(i),
-            redis::Value::Data(s) => {
-                Response::Str(String::from_utf8_lossy(&s).to_string())
-            }
+            redis::Value::Data(s) => Response::Str(String::from_utf8_lossy(&s).to_string()),
             redis::Value::Status(s) => Response::Str(s),
             redis::Value::Okay => Response::Str("OK".to_string()),
             redis::Value::Bulk(arr) => {
@@ -189,8 +187,8 @@ impl DifferentialTester {
 #[test]
 #[ignore]
 fn test_string_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== String Operations ===");
 
@@ -270,8 +268,8 @@ fn test_string_equivalence() {
 #[test]
 #[ignore]
 fn test_numeric_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== Numeric Operations ===");
 
@@ -312,8 +310,8 @@ fn test_numeric_equivalence() {
 #[test]
 #[ignore]
 fn test_hash_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== Hash Operations ===");
 
@@ -376,8 +374,8 @@ fn test_hash_equivalence() {
 #[test]
 #[ignore]
 fn test_list_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== List Operations ===");
 
@@ -459,8 +457,8 @@ fn test_list_equivalence() {
 #[test]
 #[ignore]
 fn test_set_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== Set Operations ===");
 
@@ -585,15 +583,17 @@ fn test_set_equivalence() {
 #[test]
 #[ignore]
 fn test_sorted_set_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== Sorted Set Operations ===");
 
     tester.cleanup();
 
     // ZADD
-    tester.test(&["ZADD", "scores", "100", "alice", "90", "bob", "95", "charlie"]);
+    tester.test(&[
+        "ZADD", "scores", "100", "alice", "90", "bob", "95", "charlie",
+    ]);
 
     // ZCARD
     tester.test(&["ZCARD", "scores"]);
@@ -655,8 +655,8 @@ fn test_sorted_set_equivalence() {
 #[test]
 #[ignore]
 fn test_key_operations_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== Key Operations ===");
 
@@ -682,7 +682,10 @@ fn test_key_operations_equivalence() {
                 println!("  [PASS] KEYS user:* (compared as set)");
             } else {
                 tester.failed += 1;
-                println!("  [FAIL] KEYS user:*\n    Redis: {:?}\n    Rust:  {:?}", r_sorted, u_sorted);
+                println!(
+                    "  [FAIL] KEYS user:*\n    Redis: {:?}\n    Rust:  {:?}",
+                    r_sorted, u_sorted
+                );
             }
         }
         _ => {
@@ -733,8 +736,8 @@ fn test_key_operations_equivalence() {
 #[test]
 #[ignore]
 fn test_scan_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== SCAN Operations ===");
 
@@ -749,8 +752,14 @@ fn test_scan_equivalence() {
     // SCAN with pattern
     // Note: We can't directly compare SCAN results as cursor semantics differ
     // Just verify it returns something reasonable
-    let redis_scan = exec_cmd(&mut tester.redis_conn, &["SCAN", "0", "MATCH", "scan_*", "COUNT", "100"]);
-    let rust_scan = exec_cmd(&mut tester.rust_conn, &["SCAN", "0", "MATCH", "scan_*", "COUNT", "100"]);
+    let redis_scan = exec_cmd(
+        &mut tester.redis_conn,
+        &["SCAN", "0", "MATCH", "scan_*", "COUNT", "100"],
+    );
+    let rust_scan = exec_cmd(
+        &mut tester.rust_conn,
+        &["SCAN", "0", "MATCH", "scan_*", "COUNT", "100"],
+    );
 
     match (&redis_scan, &rust_scan) {
         (Response::Bulk(r), Response::Bulk(u)) if r.len() >= 2 && u.len() >= 2 => {
@@ -760,14 +769,32 @@ fn test_scan_equivalence() {
         }
         _ => {
             tester.failed += 1;
-            println!("  [FAIL] SCAN 0 MATCH scan_* COUNT 100\n    Redis: {:?}\n    Rust:  {:?}", redis_scan, rust_scan);
+            println!(
+                "  [FAIL] SCAN 0 MATCH scan_* COUNT 100\n    Redis: {:?}\n    Rust:  {:?}",
+                redis_scan, rust_scan
+            );
         }
     }
 
     // HSCAN
-    tester.setup(&["HSET", "scan_hash", "field1", "v1", "field2", "v2", "field3", "v3"]);
-    let redis_hscan = exec_cmd(&mut tester.redis_conn, &["HSCAN", "scan_hash", "0", "COUNT", "100"]);
-    let rust_hscan = exec_cmd(&mut tester.rust_conn, &["HSCAN", "scan_hash", "0", "COUNT", "100"]);
+    tester.setup(&[
+        "HSET",
+        "scan_hash",
+        "field1",
+        "v1",
+        "field2",
+        "v2",
+        "field3",
+        "v3",
+    ]);
+    let redis_hscan = exec_cmd(
+        &mut tester.redis_conn,
+        &["HSCAN", "scan_hash", "0", "COUNT", "100"],
+    );
+    let rust_hscan = exec_cmd(
+        &mut tester.rust_conn,
+        &["HSCAN", "scan_hash", "0", "COUNT", "100"],
+    );
 
     match (&redis_hscan, &rust_hscan) {
         (Response::Bulk(r), Response::Bulk(u)) if r.len() >= 2 && u.len() >= 2 => {
@@ -776,14 +803,23 @@ fn test_scan_equivalence() {
         }
         _ => {
             tester.failed += 1;
-            println!("  [FAIL] HSCAN scan_hash 0 COUNT 100\n    Redis: {:?}\n    Rust:  {:?}", redis_hscan, rust_hscan);
+            println!(
+                "  [FAIL] HSCAN scan_hash 0 COUNT 100\n    Redis: {:?}\n    Rust:  {:?}",
+                redis_hscan, rust_hscan
+            );
         }
     }
 
     // ZSCAN
     tester.setup(&["ZADD", "scan_zset", "1", "a", "2", "b", "3", "c"]);
-    let redis_zscan = exec_cmd(&mut tester.redis_conn, &["ZSCAN", "scan_zset", "0", "COUNT", "100"]);
-    let rust_zscan = exec_cmd(&mut tester.rust_conn, &["ZSCAN", "scan_zset", "0", "COUNT", "100"]);
+    let redis_zscan = exec_cmd(
+        &mut tester.redis_conn,
+        &["ZSCAN", "scan_zset", "0", "COUNT", "100"],
+    );
+    let rust_zscan = exec_cmd(
+        &mut tester.rust_conn,
+        &["ZSCAN", "scan_zset", "0", "COUNT", "100"],
+    );
 
     match (&redis_zscan, &rust_zscan) {
         (Response::Bulk(r), Response::Bulk(u)) if r.len() >= 2 && u.len() >= 2 => {
@@ -792,7 +828,10 @@ fn test_scan_equivalence() {
         }
         _ => {
             tester.failed += 1;
-            println!("  [FAIL] ZSCAN scan_zset 0 COUNT 100\n    Redis: {:?}\n    Rust:  {:?}", redis_zscan, rust_zscan);
+            println!(
+                "  [FAIL] ZSCAN scan_zset 0 COUNT 100\n    Redis: {:?}\n    Rust:  {:?}",
+                redis_zscan, rust_zscan
+            );
         }
     }
 
@@ -804,8 +843,8 @@ fn test_scan_equivalence() {
 #[test]
 #[ignore]
 fn test_info_commands_equivalence() {
-    let mut tester = DifferentialTester::new(6379, 3000)
-        .expect("Failed to connect to both servers");
+    let mut tester =
+        DifferentialTester::new(6379, 3000).expect("Failed to connect to both servers");
 
     println!("\n=== Server/Info Commands ===");
 
@@ -881,14 +920,14 @@ fn test_full_equivalence_suite() {
     println!("\n--- Sorted Set Operations ---");
     tester.test(&["ZADD", "z1", "1", "a", "2", "b", "3", "c"]);
     tester.test(&["ZCARD", "z1"]);
-    tester.test(&["ZRANGE", "z1", "0", "-1"]);  // Without WITHSCORES for now
+    tester.test(&["ZRANGE", "z1", "0", "-1"]); // Without WITHSCORES for now
     tester.test(&["ZSCORE", "z1", "b"]);
 
     // Key operations
     println!("\n--- Key Operations ---");
     tester.test(&["EXISTS", "s1"]);
     tester.test(&["TYPE", "h1"]);
-    tester.test(&["DEL", "s1"]);  // Single key only for now
+    tester.test(&["DEL", "s1"]); // Single key only for now
     tester.test(&["DEL", "n1"]);
 
     tester.report();

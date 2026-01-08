@@ -35,7 +35,9 @@ fn main() {
 
     // Set TCP_NODELAY for lower latency
     stream.set_nodelay(true).unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
 
     println!("Connected!\n");
 
@@ -78,7 +80,10 @@ fn submit_single_metric(stream: &mut TcpStream) {
     let elapsed = start.elapsed();
 
     println!("  Command: MCOUNTER http.requests host:web01 env:prod 1");
-    println!("  Response: {}", String::from_utf8_lossy(&response[..n]).trim());
+    println!(
+        "  Response: {}",
+        String::from_utf8_lossy(&response[..n]).trim()
+    );
     println!("  Latency: {:?}", elapsed);
 }
 
@@ -149,10 +154,7 @@ fn simulate_application_metrics(stream: &mut TcpStream) {
     // CPU gauges
     for host in &hosts {
         let cpu = 30.0 + (rand_u32() % 50) as f64;
-        batch.push_str(&format!(
-            "MGAUGE system.cpu host:{} {:.1}\r\n",
-            host, cpu
-        ));
+        batch.push_str(&format!("MGAUGE system.cpu host:{} {:.1}\r\n", host, cpu));
     }
 
     // Memory gauges
@@ -177,10 +179,7 @@ fn simulate_application_metrics(stream: &mut TcpStream) {
 
     // Unique users
     for i in 0..50 {
-        batch.push_str(&format!(
-            "MUNIQUE unique.users page:/home user{}\r\n",
-            i
-        ));
+        batch.push_str(&format!("MUNIQUE unique.users page:/home user{}\r\n", i));
     }
 
     // Active connections (up-down counter)

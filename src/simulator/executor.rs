@@ -1,5 +1,5 @@
-use super::*;
 use super::network::Network;
+use super::*;
 use std::collections::{BinaryHeap, HashMap};
 
 pub struct SimulationConfig {
@@ -57,26 +57,26 @@ impl Simulation {
         self.next_host_id += 1;
         let host = Host::new(id, name);
         self.hosts.insert(id, host);
-        
+
         self.events.push(Event {
             time: self.current_time,
             host_id: id,
             event_type: EventType::HostStart,
         });
-        
+
         id
     }
 
     pub fn schedule_timer(&mut self, host_id: HostId, delay: Duration) -> TimerId {
         let timer_id = TimerId(self.next_timer_id);
         self.next_timer_id += 1;
-        
+
         self.events.push(Event {
             time: self.current_time + delay,
             host_id,
             event_type: EventType::Timer(timer_id),
         });
-        
+
         timer_id
     }
 
@@ -85,11 +85,7 @@ impl Simulation {
             self.events.push(Event {
                 time: self.current_time + delay,
                 host_id: to,
-                event_type: EventType::NetworkMessage(Message {
-                    from,
-                    to,
-                    payload,
-                }),
+                event_type: EventType::NetworkMessage(Message { from, to, payload }),
             });
         }
     }
@@ -114,13 +110,17 @@ impl Simulation {
         &mut self.rng
     }
 
-    pub fn run_until(&mut self, max_time: VirtualTime, mut event_handler: impl FnMut(&mut Self, &Event)) {
+    pub fn run_until(
+        &mut self,
+        max_time: VirtualTime,
+        mut event_handler: impl FnMut(&mut Self, &Event),
+    ) {
         while let Some(event) = self.events.pop() {
             if event.time > max_time {
                 self.events.push(event);
                 break;
             }
-            
+
             self.current_time = event.time;
             event_handler(self, &event);
         }

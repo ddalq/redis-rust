@@ -1,5 +1,5 @@
+use super::{DeterministicRng, Duration, VirtualTime};
 use crate::redis::{Command, CommandExecutor, RespValue};
-use super::{VirtualTime, Duration, DeterministicRng};
 
 #[derive(Debug, Clone)]
 pub struct Operation {
@@ -69,7 +69,12 @@ impl SimulationHarness {
         Self::with_config(seed, 0, false, 0.0)
     }
 
-    pub fn with_config(seed: u64, start_epoch: i64, buggify_enabled: bool, buggify_probability: f64) -> Self {
+    pub fn with_config(
+        seed: u64,
+        start_epoch: i64,
+        buggify_enabled: bool,
+        buggify_probability: f64,
+    ) -> Self {
         SimulationHarness {
             node: SimulatedRedisNode::new(start_epoch),
             rng: DeterministicRng::new(seed),
@@ -252,8 +257,10 @@ mod tests {
     #[test]
     fn test_basic_set_get() {
         let harness = ScenarioBuilder::new(42)
-            .at_time(0).client(1, Command::set("key".into(), SDS::from_str("value")))
-            .at_time(10).client(1, Command::Get("key".into()))
+            .at_time(0)
+            .client(1, Command::set("key".into(), SDS::from_str("value")))
+            .at_time(10)
+            .client(1, Command::Get("key".into()))
             .run();
 
         assert_eq!(harness.history().len(), 2);
@@ -268,9 +275,15 @@ mod tests {
     #[test]
     fn test_ttl_expiration_with_fast_forward() {
         let harness = ScenarioBuilder::new(42)
-            .at_time(0).client(1, Command::setex("temp".into(), 1, SDS::from_str("expires")))
-            .at_time(500).client(1, Command::Get("temp".into()))
-            .at_time(1500).client(1, Command::Get("temp".into()))
+            .at_time(0)
+            .client(
+                1,
+                Command::setex("temp".into(), 1, SDS::from_str("expires")),
+            )
+            .at_time(500)
+            .client(1, Command::Get("temp".into()))
+            .at_time(1500)
+            .client(1, Command::Get("temp".into()))
             .run_with_eviction(100);
 
         assert_eq!(harness.history().len(), 3);
@@ -289,10 +302,14 @@ mod tests {
     #[test]
     fn test_ttl_boundary_race() {
         let harness = ScenarioBuilder::new(42)
-            .at_time(0).client(1, Command::setex("race".into(), 1, SDS::from_str("data")))
-            .at_time(999).client(1, Command::Get("race".into()))
-            .at_time(1000).client(2, Command::Get("race".into()))
-            .at_time(1001).client(3, Command::Get("race".into()))
+            .at_time(0)
+            .client(1, Command::setex("race".into(), 1, SDS::from_str("data")))
+            .at_time(999)
+            .client(1, Command::Get("race".into()))
+            .at_time(1000)
+            .client(2, Command::Get("race".into()))
+            .at_time(1001)
+            .client(3, Command::Get("race".into()))
             .run_with_eviction(100);
 
         match &harness.history()[1].response {
@@ -309,11 +326,16 @@ mod tests {
     #[test]
     fn test_concurrent_increments() {
         let harness = ScenarioBuilder::new(42)
-            .at_time(0).client(1, Command::set("counter".into(), SDS::from_str("0")))
-            .at_time(10).client(1, Command::Incr("counter".into()))
-            .at_time(10).client(2, Command::Incr("counter".into()))
-            .at_time(10).client(3, Command::Incr("counter".into()))
-            .at_time(20).client(1, Command::Get("counter".into()))
+            .at_time(0)
+            .client(1, Command::set("counter".into(), SDS::from_str("0")))
+            .at_time(10)
+            .client(1, Command::Incr("counter".into()))
+            .at_time(10)
+            .client(2, Command::Incr("counter".into()))
+            .at_time(10)
+            .client(3, Command::Incr("counter".into()))
+            .at_time(20)
+            .client(1, Command::Get("counter".into()))
             .run();
 
         match &harness.history().last().unwrap().response {
@@ -327,17 +349,25 @@ mod tests {
     #[test]
     fn test_deterministic_replay() {
         let run1 = ScenarioBuilder::new(12345)
-            .at_time(0).client(1, Command::set("a".into(), SDS::from_str("1")))
-            .at_time(5).client(2, Command::set("b".into(), SDS::from_str("2")))
-            .at_time(10).client(1, Command::Get("a".into()))
-            .at_time(10).client(2, Command::Get("b".into()))
+            .at_time(0)
+            .client(1, Command::set("a".into(), SDS::from_str("1")))
+            .at_time(5)
+            .client(2, Command::set("b".into(), SDS::from_str("2")))
+            .at_time(10)
+            .client(1, Command::Get("a".into()))
+            .at_time(10)
+            .client(2, Command::Get("b".into()))
             .run();
 
         let run2 = ScenarioBuilder::new(12345)
-            .at_time(0).client(1, Command::set("a".into(), SDS::from_str("1")))
-            .at_time(5).client(2, Command::set("b".into(), SDS::from_str("2")))
-            .at_time(10).client(1, Command::Get("a".into()))
-            .at_time(10).client(2, Command::Get("b".into()))
+            .at_time(0)
+            .client(1, Command::set("a".into(), SDS::from_str("1")))
+            .at_time(5)
+            .client(2, Command::set("b".into(), SDS::from_str("2")))
+            .at_time(10)
+            .client(1, Command::Get("a".into()))
+            .at_time(10)
+            .client(2, Command::Get("b".into()))
             .run();
 
         assert_eq!(run1.history().len(), run2.history().len());
@@ -350,8 +380,10 @@ mod tests {
     fn test_buggify_chaos() {
         let harness = ScenarioBuilder::new(42)
             .with_buggify(0.5)
-            .at_time(0).client(1, Command::set("key".into(), SDS::from_str("value")))
-            .at_time(100).client(1, Command::Get("key".into()))
+            .at_time(0)
+            .client(1, Command::set("key".into(), SDS::from_str("value")))
+            .at_time(100)
+            .client(1, Command::Get("key".into()))
             .run();
 
         match &harness.history().last().unwrap().response {
@@ -363,9 +395,15 @@ mod tests {
     #[test]
     fn test_persist_cancels_expiration() {
         let harness = ScenarioBuilder::new(42)
-            .at_time(0).client(1, Command::setex("persist_test".into(), 1, SDS::from_str("data")))
-            .at_time(500).client(1, Command::Persist("persist_test".into()))
-            .at_time(2000).client(1, Command::Get("persist_test".into()))
+            .at_time(0)
+            .client(
+                1,
+                Command::setex("persist_test".into(), 1, SDS::from_str("data")),
+            )
+            .at_time(500)
+            .client(1, Command::Persist("persist_test".into()))
+            .at_time(2000)
+            .client(1, Command::Get("persist_test".into()))
             .run_with_eviction(100);
 
         match &harness.history().last().unwrap().response {
@@ -379,10 +417,14 @@ mod tests {
         for seed in 0..100 {
             let harness = ScenarioBuilder::new(seed)
                 .with_buggify(0.1)
-                .at_time(0).client(1, Command::set("x".into(), SDS::from_str("0")))
-                .at_time(10).client(1, Command::Incr("x".into()))
-                .at_time(20).client(1, Command::Incr("x".into()))
-                .at_time(30).client(1, Command::Get("x".into()))
+                .at_time(0)
+                .client(1, Command::set("x".into(), SDS::from_str("0")))
+                .at_time(10)
+                .client(1, Command::Incr("x".into()))
+                .at_time(20)
+                .client(1, Command::Incr("x".into()))
+                .at_time(30)
+                .client(1, Command::Get("x".into()))
                 .run();
 
             match &harness.history().last().unwrap().response {

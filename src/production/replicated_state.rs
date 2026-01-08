@@ -1,14 +1,11 @@
-use crate::io::{TimeSource, ProductionTimeSource};
-use crate::redis::{Command, RespValue};
-use crate::replication::{
-    ReplicaId, ReplicationConfig, ConsistencyLevel,
-    ReplicationDelta,
-};
-use crate::replication::gossip::GossipState;
-use crate::simulator::VirtualTime;
-use crate::streaming::DeltaSinkSender;
 use super::gossip_actor::GossipActorHandle;
 use super::replicated_shard_actor::{ReplicatedShardActor, ReplicatedShardHandle};
+use crate::io::{ProductionTimeSource, TimeSource};
+use crate::redis::{Command, RespValue};
+use crate::replication::gossip::GossipState;
+use crate::replication::{ConsistencyLevel, ReplicaId, ReplicationConfig, ReplicationDelta};
+use crate::simulator::VirtualTime;
+use crate::streaming::DeltaSinkSender;
 use parking_lot::RwLock;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -185,7 +182,9 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
             Command::Ping => RespValue::SimpleString("PONG".to_string()),
             Command::FlushDb | Command::FlushAll => {
                 // Execute on all shards concurrently
-                let futures: Vec<_> = self.shards.iter()
+                let futures: Vec<_> = self
+                    .shards
+                    .iter()
                     .map(|shard| shard.execute(cmd.clone()))
                     .collect();
                 futures::future::join_all(futures).await;
@@ -193,7 +192,8 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
             }
             Command::MSet(pairs) => {
                 // Execute all SETs concurrently
-                let futures: Vec<_> = pairs.iter()
+                let futures: Vec<_> = pairs
+                    .iter()
                     .map(|(key, value)| {
                         let shard_idx = hash_key(key);
                         let set_cmd = Command::set(key.clone(), value.clone());
@@ -205,7 +205,8 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
             }
             Command::MGet(keys) => {
                 // Execute all GETs concurrently
-                let futures: Vec<_> = keys.iter()
+                let futures: Vec<_> = keys
+                    .iter()
                     .map(|key| {
                         let shard_idx = hash_key(key);
                         let get_cmd = Command::Get(key.clone());
@@ -217,7 +218,8 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
             }
             Command::Exists(keys) => {
                 // Execute all EXISTS concurrently
-                let futures: Vec<_> = keys.iter()
+                let futures: Vec<_> = keys
+                    .iter()
                     .map(|key| {
                         let shard_idx = hash_key(key);
                         let exists_cmd = Command::Exists(vec![key.clone()]);
@@ -225,14 +227,23 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
                     })
                     .collect();
                 let results = futures::future::join_all(futures).await;
-                let count: i64 = results.into_iter()
-                    .filter_map(|r| if let RespValue::Integer(n) = r { Some(n) } else { None })
+                let count: i64 = results
+                    .into_iter()
+                    .filter_map(|r| {
+                        if let RespValue::Integer(n) = r {
+                            Some(n)
+                        } else {
+                            None
+                        }
+                    })
                     .sum();
                 RespValue::Integer(count)
             }
             Command::Keys(_pattern) => {
                 // Execute on all shards concurrently
-                let futures: Vec<_> = self.shards.iter()
+                let futures: Vec<_> = self
+                    .shards
+                    .iter()
                     .map(|shard| shard.execute_readonly(cmd.clone()))
                     .collect();
                 let results = futures::future::join_all(futures).await;
@@ -268,7 +279,9 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
 
     /// Collect pending deltas from all shards (async)
     pub async fn collect_pending_deltas(&self) -> Vec<ReplicationDelta> {
-        let futures: Vec<_> = self.shards.iter()
+        let futures: Vec<_> = self
+            .shards
+            .iter()
             .map(|shard| shard.drain_pending_deltas())
             .collect();
         let results = futures::future::join_all(futures).await;
@@ -282,7 +295,9 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
         let current_time_ms = self.time_source.now_millis();
         let current_time = VirtualTime::from_millis(current_time_ms);
 
-        let futures: Vec<_> = self.shards.iter()
+        let futures: Vec<_> = self
+            .shards
+            .iter()
             .map(|shard| shard.evict_expired(current_time))
             .collect();
         let results = futures::future::join_all(futures).await;
@@ -339,8 +354,12 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
     ///
     /// Returns a HashMap of all keys to their ReplicatedValue across all shards.
     /// This is used by the CheckpointManager to create full state snapshots.
-    pub async fn snapshot_state(&self) -> HashMap<String, crate::replication::state::ReplicatedValue> {
-        let futures: Vec<_> = self.shards.iter()
+    pub async fn snapshot_state(
+        &self,
+    ) -> HashMap<String, crate::replication::state::ReplicatedValue> {
+        let futures: Vec<_> = self
+            .shards
+            .iter()
             .map(|shard| shard.get_snapshot())
             .collect();
         let results = futures::future::join_all(futures).await;
@@ -376,7 +395,9 @@ impl<T: TimeSource> ReplicatedShardedState<T> {
 
     /// Get the total number of keys across all shards (async)
     pub async fn key_count(&self) -> usize {
-        let futures: Vec<_> = self.shards.iter()
+        let futures: Vec<_> = self
+            .shards
+            .iter()
             .map(|shard| shard.get_snapshot())
             .collect();
         let results = futures::future::join_all(futures).await;

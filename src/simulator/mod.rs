@@ -1,25 +1,34 @@
-mod executor;
-mod time;
-mod network;
-mod rng;
-pub mod harness;
-pub mod multi_node;
+pub mod connection;
 pub mod crash;
 pub mod dst;
 pub mod dst_integration;
+mod executor;
+pub mod harness;
+pub mod multi_node;
+mod network;
 pub mod partition_tests;
-pub mod connection;
+mod rng;
+mod time;
 
+pub use connection::{
+    ExecutionRecord, PipelineResult, PipelineSimulator, SimulatedConnection, SimulatedReadBuffer,
+    SimulatedWriteBuffer,
+};
+pub use crash::{CrashConfig, CrashReason, CrashSimulator, NodeSnapshot, NodeState};
+pub use dst::{BatchResult, BatchRunner, DSTConfig, DSTSimulation, SimulationResult};
 pub use executor::{Simulation, SimulationConfig};
-pub use time::{VirtualTime, Duration};
-pub use network::{Host, NetworkEvent, PacketDelay, NetworkFault};
-pub use rng::{DeterministicRng, buggify};
-pub use harness::{SimulationHarness, SimulatedRedisNode, ScenarioBuilder};
-pub use multi_node::{MultiNodeSimulation, TimestampedOperation, LinearizabilityResult, check_single_key_linearizability};
-pub use crash::{CrashSimulator, CrashConfig, CrashReason, NodeState, NodeSnapshot};
-pub use dst::{DSTSimulation, DSTConfig, BatchRunner, BatchResult, SimulationResult};
-pub use partition_tests::{PartitionConfig, PartitionTestResult, PartitionBatchResult, run_partition_test, run_partition_test_batch};
-pub use connection::{SimulatedConnection, SimulatedReadBuffer, SimulatedWriteBuffer, PipelineSimulator, PipelineResult, ExecutionRecord};
+pub use harness::{ScenarioBuilder, SimulatedRedisNode, SimulationHarness};
+pub use multi_node::{
+    check_single_key_linearizability, LinearizabilityResult, MultiNodeSimulation,
+    TimestampedOperation,
+};
+pub use network::{Host, NetworkEvent, NetworkFault, PacketDelay};
+pub use partition_tests::{
+    run_partition_test, run_partition_test_batch, PartitionBatchResult, PartitionConfig,
+    PartitionTestResult,
+};
+pub use rng::{buggify, DeterministicRng};
+pub use time::{Duration, VirtualTime};
 
 use std::cmp::Ordering;
 

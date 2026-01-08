@@ -32,12 +32,12 @@
 //! | SHADOW_LOG_MISMATCHES | true | Log response mismatches |
 //! | SHADOW_FAIL_ON_MISMATCH | false | Return error to client on mismatch |
 
-use bytes::{BytesMut, BufMut, Buf};
+use bytes::{Buf, BufMut, BytesMut};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
 const DEFAULT_LISTEN_PORT: u16 = 6381;
 const DEFAULT_PRIMARY: &str = "localhost:6379";
@@ -126,8 +126,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     println!("Configuration:");
     println!("  Listen port: {}", config.listen_port);
-    println!("  Primary:     {} (responses returned to client)", config.primary);
-    println!("  Secondary:   {} (shadow, responses compared)", config.secondary);
+    println!(
+        "  Primary:     {} (responses returned to client)",
+        config.primary
+    );
+    println!(
+        "  Secondary:   {} (shadow, responses compared)",
+        config.secondary
+    );
     println!("  Log mismatches: {}", config.log_mismatches);
     println!("  Fail on mismatch: {}", config.fail_on_mismatch);
     println!();
@@ -278,7 +284,13 @@ fn extract_command_preview(data: &[u8]) -> String {
     let preview: String = data
         .iter()
         .take(100)
-        .map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '.' })
+        .map(|&b| {
+            if b.is_ascii_graphic() || b == b' ' {
+                b as char
+            } else {
+                '.'
+            }
+        })
         .collect();
 
     // Try to extract the command name from RESP format

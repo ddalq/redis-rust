@@ -35,7 +35,9 @@ fn main() {
     };
 
     stream.set_nodelay(true).unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
 
     println!("Connected!\n");
 

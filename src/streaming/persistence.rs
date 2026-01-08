@@ -24,9 +24,9 @@
 
 use crate::replication::state::ReplicationDelta;
 use crate::streaming::{
-    Compression, Manifest, ManifestError, ManifestManager, ObjectStore, SegmentError,
-    SegmentInfo, SegmentWriter, WriteBufferConfig, WriteBufferError,
-    StreamingClock, StreamingTimestamp, ProductionClock,
+    Compression, Manifest, ManifestError, ManifestManager, ObjectStore, ProductionClock,
+    SegmentError, SegmentInfo, SegmentWriter, StreamingClock, StreamingTimestamp,
+    WriteBufferConfig, WriteBufferError,
 };
 use std::sync::Arc;
 
@@ -110,7 +110,10 @@ pub struct FlushResult {
 ///
 /// Manages WriteBuffer and ManifestManager together.
 /// Generic over object store and clock for DST compatibility.
-pub struct StreamingPersistence<S: ObjectStore + Clone + 'static, C: StreamingClock = ProductionClock> {
+pub struct StreamingPersistence<
+    S: ObjectStore + Clone + 'static,
+    C: StreamingClock = ProductionClock,
+> {
     store: Arc<S>,
     prefix: String,
     manifest_manager: ManifestManager<S>,
@@ -205,7 +208,9 @@ impl<S: ObjectStore + Clone + 'static, C: StreamingClock> StreamingPersistence<S
 
         self.buffer.push(delta);
         // TigerStyle: Use checked arithmetic for buffer size to catch corruption
-        self.buffer_size = self.buffer_size.checked_add(delta_size)
+        self.buffer_size = self
+            .buffer_size
+            .checked_add(delta_size)
             .expect("buffer_size overflow - indicates corrupted state or logic error");
         // TigerStyle: Use saturating arithmetic for stats (counters, non-critical)
         self.stats.deltas_pushed = self.stats.deltas_pushed.saturating_add(1);
@@ -230,7 +235,10 @@ impl<S: ObjectStore + Clone + 'static, C: StreamingClock> StreamingPersistence<S
         }
 
         // Time threshold (DST-compatible via clock abstraction)
-        if self.clock.has_elapsed(self.last_flush, self.config.flush_interval) {
+        if self
+            .clock
+            .has_elapsed(self.last_flush, self.config.flush_interval)
+        {
             return true;
         }
 
@@ -269,7 +277,10 @@ impl<S: ObjectStore + Clone + 'static, C: StreamingClock> StreamingPersistence<S
         // IMPORTANT: Reload manifest from storage to get the latest next_segment_id.
         // This prevents ID collisions when compaction has allocated new segment IDs.
         // The trade-off is an extra I/O read per flush, but ensures correctness.
-        self.manifest = self.manifest_manager.load_or_create(self.manifest.replica_id).await?;
+        self.manifest = self
+            .manifest_manager
+            .load_or_create(self.manifest.replica_id)
+            .await?;
 
         // Allocate segment ID
         let segment_id = self.manifest.allocate_segment_id();
@@ -402,10 +413,7 @@ impl<S: ObjectStore + Clone + 'static> PersistenceWorker<S> {
     /// Run the worker loop
     pub async fn run(self) {
         loop {
-            if self
-                .shutdown
-                .load(std::sync::atomic::Ordering::SeqCst)
-            {
+            if self.shutdown.load(std::sync::atomic::Ordering::SeqCst) {
                 // Final flush
                 let mut p = self.persistence.lock().await;
                 if let Err(e) = p.flush().await {
@@ -493,10 +501,9 @@ mod tests {
 
         // Second instance should see the segment
         {
-            let persistence =
-                StreamingPersistence::new(store, "test".to_string(), 1, config)
-                    .await
-                    .unwrap();
+            let persistence = StreamingPersistence::new(store, "test".to_string(), 1, config)
+                .await
+                .unwrap();
 
             assert_eq!(persistence.manifest().segments.len(), 1);
         }
@@ -510,10 +517,9 @@ mod tests {
         config.max_deltas = 10000;
         config.flush_interval = std::time::Duration::from_secs(3600);
 
-        let mut persistence =
-            StreamingPersistence::new(store, "test".to_string(), 1, config)
-                .await
-                .unwrap();
+        let mut persistence = StreamingPersistence::new(store, "test".to_string(), 1, config)
+            .await
+            .unwrap();
 
         // Push until size threshold
         for i in 0..10 {
@@ -533,13 +539,14 @@ mod tests {
         config.max_deltas = 5;
         config.flush_interval = std::time::Duration::from_secs(3600);
 
-        let mut persistence =
-            StreamingPersistence::new(store, "test".to_string(), 1, config)
-                .await
-                .unwrap();
+        let mut persistence = StreamingPersistence::new(store, "test".to_string(), 1, config)
+            .await
+            .unwrap();
 
         for i in 0..5 {
-            persistence.push(make_delta(&format!("k{}", i), "v", 100)).unwrap();
+            persistence
+                .push(make_delta(&format!("k{}", i), "v", 100))
+                .unwrap();
         }
 
         assert!(persistence.should_flush());
@@ -590,10 +597,9 @@ mod tests {
         ));
 
         let config = WriteBufferConfig::test();
-        let mut persistence =
-            StreamingPersistence::new(store, "dst".to_string(), 1, config)
-                .await
-                .unwrap();
+        let mut persistence = StreamingPersistence::new(store, "dst".to_string(), 1, config)
+            .await
+            .unwrap();
 
         persistence.push(make_delta("key1", "v1", 100)).unwrap();
         let result = persistence.flush().await.unwrap();
@@ -690,7 +696,9 @@ mod tests {
             let mut fail_count = 0;
 
             for i in 0..20 {
-                persistence.push(make_delta(&format!("key{}", i), "value", i as u64)).unwrap();
+                persistence
+                    .push(make_delta(&format!("key{}", i), "value", i as u64))
+                    .unwrap();
                 clock.advance_ms(100);
 
                 match persistence.flush().await {

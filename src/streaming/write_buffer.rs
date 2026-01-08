@@ -4,7 +4,7 @@
 //! or when size thresholds are reached.
 
 use crate::replication::state::ReplicationDelta;
-use crate::streaming::{ObjectStore, SegmentWriter, WriteBufferConfig, Compression};
+use crate::streaming::{Compression, ObjectStore, SegmentWriter, WriteBufferConfig};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -12,7 +12,10 @@ use std::time::{Duration, Instant};
 #[derive(Debug)]
 pub enum WriteBufferError {
     /// Buffer is full (backpressure)
-    BackpressureExceeded { pending_bytes: usize, threshold: usize },
+    BackpressureExceeded {
+        pending_bytes: usize,
+        threshold: usize,
+    },
     /// Serialization error
     Serialization(String),
     /// Object store error
@@ -26,9 +29,15 @@ pub enum WriteBufferError {
 impl std::fmt::Display for WriteBufferError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WriteBufferError::BackpressureExceeded { pending_bytes, threshold } => {
-                write!(f, "Backpressure exceeded: {} bytes pending, threshold {} bytes",
-                       pending_bytes, threshold)
+            WriteBufferError::BackpressureExceeded {
+                pending_bytes,
+                threshold,
+            } => {
+                write!(
+                    f,
+                    "Backpressure exceeded: {} bytes pending, threshold {} bytes",
+                    pending_bytes, threshold
+                )
             }
             WriteBufferError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             WriteBufferError::ObjectStore(e) => write!(f, "Object store error: {}", e),
@@ -277,7 +286,8 @@ pub struct FlushWorkerHandle {
 impl FlushWorkerHandle {
     /// Signal the flush worker to stop
     pub fn shutdown(&self) {
-        self.shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.shutdown
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -332,10 +342,10 @@ impl<S: ObjectStore> FlushWorker<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::streaming::InMemoryObjectStore;
-    use crate::replication::state::ReplicatedValue;
-    use crate::replication::lattice::{ReplicaId, LamportClock};
     use crate::redis::SDS;
+    use crate::replication::lattice::{LamportClock, ReplicaId};
+    use crate::replication::state::ReplicatedValue;
+    use crate::streaming::InMemoryObjectStore;
 
     fn make_delta(key: &str, value: &str, replica: u64) -> ReplicationDelta {
         let replica_id = ReplicaId::new(replica);

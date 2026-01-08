@@ -94,7 +94,9 @@ impl Metrics {
 
     #[inline(always)]
     pub fn timer(&self, _name: &'static str) -> Timer {
-        Timer { _start: Instant::now() }
+        Timer {
+            _start: Instant::now(),
+        }
     }
 }
 
@@ -134,7 +136,9 @@ impl DatadogConfig {
 }
 
 /// No-op tracing initialization - uses basic fmt subscriber
-pub fn init_tracing(_config: &DatadogConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn init_tracing(
+    _config: &DatadogConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .try_init()

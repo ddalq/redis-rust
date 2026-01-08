@@ -8,14 +8,14 @@
 //! - **Pipelining** for high-throughput batch ingestion
 //! - **Eventual consistency** for multi-node metric aggregation
 
-mod types;
-mod key_encoder;
-mod state;
 mod commands;
+mod key_encoder;
 mod query;
+mod state;
+mod types;
 
-pub use types::{MetricType, MetricPoint, TagSet, MetricValue};
+pub use commands::{MetricsCommand, MetricsCommandExecutor, MetricsResult};
 pub use key_encoder::MetricKeyEncoder;
-pub use state::{MetricsState, MetricsDelta};
-pub use commands::{MetricsCommandExecutor, MetricsCommand, MetricsResult};
-pub use query::{MetricsQuery, QueryResult, AggregationType, QueryExecutor};
+pub use query::{AggregationType, MetricsQuery, QueryExecutor, QueryResult};
+pub use state::{MetricsDelta, MetricsState};
+pub use types::{MetricPoint, MetricType, MetricValue, TagSet};

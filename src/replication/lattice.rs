@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReplicaId(pub u64);
@@ -19,7 +19,10 @@ pub struct LamportClock {
 
 impl LamportClock {
     pub fn new(replica_id: ReplicaId) -> Self {
-        LamportClock { time: 0, replica_id }
+        LamportClock {
+            time: 0,
+            replica_id,
+        }
     }
 
     pub fn tick(&mut self) -> Self {
@@ -528,7 +531,10 @@ pub struct UniqueTag {
 
 impl UniqueTag {
     pub fn new(replica_id: ReplicaId, sequence: u64) -> Self {
-        UniqueTag { replica_id, sequence }
+        UniqueTag {
+            replica_id,
+            sequence,
+        }
     }
 }
 
@@ -564,7 +570,11 @@ impl<T: Clone + Eq + Hash> ORSet<T> {
         // Invariant 2: All tags must have sequence < next_sequence for their replica
         for (_, tags) in &self.elements {
             for tag in tags {
-                let next_seq = self.next_sequence.get(&tag.replica_id).copied().unwrap_or(0);
+                let next_seq = self
+                    .next_sequence
+                    .get(&tag.replica_id)
+                    .copied()
+                    .unwrap_or(0);
                 debug_assert!(
                     tag.sequence < next_seq,
                     "Invariant violated: tag {:?} has sequence >= next_sequence {}",
@@ -575,7 +585,11 @@ impl<T: Clone + Eq + Hash> ORSet<T> {
         }
 
         // Invariant 3: len() must count only elements with non-empty tag sets
-        let expected_len = self.elements.iter().filter(|(_, tags)| !tags.is_empty()).count();
+        let expected_len = self
+            .elements
+            .iter()
+            .filter(|(_, tags)| !tags.is_empty())
+            .count();
         debug_assert_eq!(
             self.len(),
             expected_len,

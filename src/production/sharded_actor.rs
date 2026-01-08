@@ -1,4 +1,4 @@
-use crate::io::{TimeSource, ProductionTimeSource};
+use crate::io::{ProductionTimeSource, TimeSource};
 use crate::redis::{Command, CommandExecutor, RespValue};
 use crate::simulator::VirtualTime;
 use std::collections::hash_map::DefaultHasher;
@@ -8,8 +8,8 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::adaptive_actor::{AdaptiveActor, AdaptiveActorConfig, AdaptiveActorHandle};
 use super::load_balancer::ScalingDecision;
-use super::response_pool::{ResponsePool, ResponseSlot, response_future};
 use super::perf_config::PerformanceConfig;
+use super::response_pool::{response_future, ResponsePool, ResponseSlot};
 
 /// Configuration for dynamic sharding behavior
 #[derive(Clone, Debug)]
@@ -123,15 +123,30 @@ pub struct ShardActor {
 }
 
 impl ShardActor {
-    fn new(rx: mpsc::UnboundedReceiver<ShardMessage>, simulation_start_epoch: i64, shard_id: usize, num_shards: usize) -> Self {
-        debug_assert!(shard_id < num_shards, "Shard ID {} out of bounds for {} shards", shard_id, num_shards);
+    fn new(
+        rx: mpsc::UnboundedReceiver<ShardMessage>,
+        simulation_start_epoch: i64,
+        shard_id: usize,
+        num_shards: usize,
+    ) -> Self {
+        debug_assert!(
+            shard_id < num_shards,
+            "Shard ID {} out of bounds for {} shards",
+            shard_id,
+            num_shards
+        );
         let mut executor = CommandExecutor::new();
         executor.set_simulation_start_epoch(simulation_start_epoch);
-        ShardActor { executor, rx, shard_id, num_shards }
+        ShardActor {
+            executor,
+            rx,
+            shard_id,
+            num_shards,
+        }
     }
-    
+
     /// Create a new ShardActor with a shared script cache
-    /// 
+    ///
     /// This allows all shards to share a single script cache for multi-shard Lua support.
     fn new_with_shared_scripts(
         rx: mpsc::UnboundedReceiver<ShardMessage>,
@@ -140,16 +155,30 @@ impl ShardActor {
         num_shards: usize,
         shared_script_cache: crate::redis::lua::SharedScriptCache,
     ) -> Self {
-        debug_assert!(shard_id < num_shards, "Shard ID {} out of bounds for {} shards", shard_id, num_shards);
+        debug_assert!(
+            shard_id < num_shards,
+            "Shard ID {} out of bounds for {} shards",
+            shard_id,
+            num_shards
+        );
         let mut executor = CommandExecutor::with_shared_script_cache(shared_script_cache);
         executor.set_simulation_start_epoch(simulation_start_epoch);
-        ShardActor { executor, rx, shard_id, num_shards }
+        ShardActor {
+            executor,
+            rx,
+            shard_id,
+            num_shards,
+        }
     }
 
     async fn run(mut self) {
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                ShardMessage::Command { cmd, virtual_time, response_tx } => {
+                ShardMessage::Command {
+                    cmd,
+                    virtual_time,
+                    response_tx,
+                } => {
                     self.executor.set_time(virtual_time);
                     let response = self.executor.execute(&cmd);
                     let _ = response_tx.send(response);
@@ -159,7 +188,10 @@ impl ShardActor {
                     self.executor.set_time(virtual_time);
                     let _ = self.executor.execute(&cmd);
                 }
-                ShardMessage::EvictExpired { virtual_time, response_tx } => {
+                ShardMessage::EvictExpired {
+                    virtual_time,
+                    response_tx,
+                } => {
                     let evicted = self.executor.evict_expired_direct(virtual_time);
                     let _ = response_tx.send(evicted);
                 }
@@ -169,7 +201,11 @@ impl ShardActor {
                     let response = self.executor.get_direct(key_str);
                     let _ = response_tx.send(response);
                 }
-                ShardMessage::FastSet { key, value, response_tx } => {
+                ShardMessage::FastSet {
+                    key,
+                    value,
+                    response_tx,
+                } => {
                     // Fast path: direct SET without Command enum overhead
                     let key_str = unsafe { std::str::from_utf8_unchecked(&key) };
                     let response = self.executor.set_direct(key_str, &value);
@@ -199,7 +235,11 @@ impl ShardActor {
                     let response = self.executor.get_direct(key_str);
                     response_slot.send(response);
                 }
-                ShardMessage::PooledFastSet { key, value, response_slot } => {
+                ShardMessage::PooledFastSet {
+                    key,
+                    value,
+                    response_slot,
+                } => {
                     // Pooled fast SET: uses response slot instead of oneshot
                     let key_str = unsafe { std::str::from_utf8_unchecked(&key) };
                     let response = self.executor.set_direct(key_str, &value);
@@ -257,24 +297,28 @@ impl ShardHandle {
             return RespValue::Error("ERR shard unavailable".to_string());
         }
 
-        response_rx.await.unwrap_or_else(|_| {
-            RespValue::Error("ERR shard response failed".to_string())
-        })
+        response_rx
+            .await
+            .unwrap_or_else(|_| RespValue::Error("ERR shard response failed".to_string()))
     }
 
     /// Fast path SET - avoids Command enum allocation
     #[inline]
     pub async fn fast_set(&self, key: bytes::Bytes, value: bytes::Bytes) -> RespValue {
         let (response_tx, response_rx) = oneshot::channel();
-        let msg = ShardMessage::FastSet { key, value, response_tx };
+        let msg = ShardMessage::FastSet {
+            key,
+            value,
+            response_tx,
+        };
 
         if self.tx.send(msg).is_err() {
             return RespValue::Error("ERR shard unavailable".to_string());
         }
 
-        response_rx.await.unwrap_or_else(|_| {
-            RespValue::Error("ERR shard response failed".to_string())
-        })
+        response_rx
+            .await
+            .unwrap_or_else(|_| RespValue::Error("ERR shard response failed".to_string()))
     }
 
     /// Pooled fast GET - uses response pool to avoid channel allocation
@@ -329,9 +373,9 @@ impl ShardHandle {
             return vec![RespValue::Error("ERR shard unavailable".to_string())];
         }
 
-        response_rx.await.unwrap_or_else(|_| {
-            vec![RespValue::Error("ERR shard response failed".to_string())]
-        })
+        response_rx
+            .await
+            .unwrap_or_else(|_| vec![RespValue::Error("ERR shard response failed".to_string())])
     }
 
     /// Fast batch SET - multiple key-value pairs in single actor message
@@ -347,9 +391,9 @@ impl ShardHandle {
             return vec![RespValue::Error("ERR shard unavailable".to_string())];
         }
 
-        response_rx.await.unwrap_or_else(|_| {
-            vec![RespValue::Error("ERR shard response failed".to_string())]
-        })
+        response_rx
+            .await
+            .unwrap_or_else(|_| vec![RespValue::Error("ERR shard response failed".to_string())])
     }
 
     #[inline]
@@ -453,7 +497,8 @@ impl<T: TimeSource> ShardedActorState<T> {
     ///
     /// This is the main constructor - all other constructors delegate to this.
     pub fn with_config_and_time_source(config: ShardConfig, time_source: T) -> Self {
-        let num_shards = config.initial_shards
+        let num_shards = config
+            .initial_shards
             .max(config.min_shards)
             .min(config.max_shards);
 
@@ -528,7 +573,8 @@ impl<T: TimeSource> ShardedActorState<T> {
         shard_config: ShardConfig,
         time_source: T,
     ) -> Self {
-        let num_shards = shard_config.initial_shards
+        let num_shards = shard_config
+            .initial_shards
             .max(shard_config.min_shards)
             .min(shard_config.max_shards);
 
@@ -673,7 +719,10 @@ impl<T: TimeSource> ShardedActorState<T> {
         let mut info = String::new();
 
         info.push_str("# Adaptive\r\n");
-        info.push_str(&format!("adaptive_replication:{}\r\n", self.config.adaptive_replication));
+        info.push_str(&format!(
+            "adaptive_replication:{}\r\n",
+            self.config.adaptive_replication
+        ));
         info.push_str(&format!("auto_scale:{}\r\n", self.config.auto_scale));
 
         if let Some(ref handle) = self.adaptive_handle {
@@ -681,7 +730,10 @@ impl<T: TimeSource> ShardedActorState<T> {
             let actor_info = handle.get_info().await;
             // The actor formats its own info, append it (skip header since we already added it)
             for line in actor_info.lines() {
-                if !line.starts_with("# Adaptive") && !line.starts_with("adaptive_replication:") && !line.starts_with("auto_scale:") {
+                if !line.starts_with("# Adaptive")
+                    && !line.starts_with("adaptive_replication:")
+                    && !line.starts_with("auto_scale:")
+                {
                     info.push_str(line);
                     info.push_str("\r\n");
                 }
@@ -819,13 +871,17 @@ impl<T: TimeSource> ShardedActorState<T> {
     /// from N to num_shards.
     ///
     /// Returns Vec<RespValue> in the same order as input pairs.
-    pub async fn fast_batch_set_pipeline(&self, pairs: Vec<(bytes::Bytes, bytes::Bytes)>) -> Vec<RespValue> {
+    pub async fn fast_batch_set_pipeline(
+        &self,
+        pairs: Vec<(bytes::Bytes, bytes::Bytes)>,
+    ) -> Vec<RespValue> {
         if pairs.is_empty() {
             return Vec::new();
         }
 
         // Group pairs by shard, tracking original indices for result reconstruction
-        let mut shard_batches: Vec<Vec<(usize, bytes::Bytes, bytes::Bytes)>> = vec![Vec::new(); self.num_shards];
+        let mut shard_batches: Vec<Vec<(usize, bytes::Bytes, bytes::Bytes)>> =
+            vec![Vec::new(); self.num_shards];
         for (idx, (key, value)) in pairs.iter().enumerate() {
             let shard_idx = hash_key_bytes(key, self.num_shards);
             shard_batches[shard_idx].push((idx, key.clone(), value.clone()));
@@ -925,21 +981,29 @@ impl<T: TimeSource> ShardedActorState<T> {
                     std::collections::HashMap::new();
                 for (original_idx, key) in keys.iter().enumerate() {
                     let shard_idx = hash_key(key, num_shards);
-                    let entry = shard_batches.entry(shard_idx).or_insert_with(|| (Vec::new(), Vec::new()));
+                    let entry = shard_batches
+                        .entry(shard_idx)
+                        .or_insert_with(|| (Vec::new(), Vec::new()));
                     entry.0.push(original_idx);
                     entry.1.push(key.clone());
                 }
 
                 // Execute batched gets concurrently
-                let futures: Vec<_> = shard_batches.iter().map(|(&shard_idx, (_, batch_keys))| {
-                    self.shards[shard_idx].execute(Command::BatchGet(batch_keys.clone()), virtual_time)
-                }).collect();
+                let futures: Vec<_> = shard_batches
+                    .iter()
+                    .map(|(&shard_idx, (_, batch_keys))| {
+                        self.shards[shard_idx]
+                            .execute(Command::BatchGet(batch_keys.clone()), virtual_time)
+                    })
+                    .collect();
 
                 let batch_results = futures::future::join_all(futures).await;
 
                 // Reconstruct results in original key order
                 let mut results = vec![RespValue::BulkString(None); keys.len()];
-                for ((_, (original_indices, _)), batch_result) in shard_batches.into_iter().zip(batch_results) {
+                for ((_, (original_indices, _)), batch_result) in
+                    shard_batches.into_iter().zip(batch_results)
+                {
                     if let RespValue::Array(Some(values)) = batch_result {
                         for (idx, value) in original_indices.into_iter().zip(values) {
                             results[idx] = value;
@@ -953,11 +1017,14 @@ impl<T: TimeSource> ShardedActorState<T> {
             Command::MSet(pairs) => {
                 // Group key-value pairs by target shard (using HashMap for dynamic shard count)
                 let num_shards = self.num_shards;
-                let mut shard_batches: std::collections::HashMap<usize, Vec<(String, crate::redis::SDS)>> =
-                    std::collections::HashMap::new();
+                let mut shard_batches: std::collections::HashMap<
+                    usize,
+                    Vec<(String, crate::redis::SDS)>,
+                > = std::collections::HashMap::new();
                 for (key, value) in pairs {
                     let shard_idx = hash_key(key, num_shards);
-                    shard_batches.entry(shard_idx)
+                    shard_batches
+                        .entry(shard_idx)
                         .or_default()
                         .push((key.clone(), value.clone()));
                 }
@@ -970,15 +1037,23 @@ impl<T: TimeSource> ShardedActorState<T> {
                 if shard_batches.len() == 1 {
                     // TigerStyle: Use explicit pattern match instead of unwrap
                     if let Some((shard_idx, batch)) = shard_batches.into_iter().next() {
-                        self.shards[shard_idx].execute(Command::BatchSet(batch), virtual_time).await;
+                        self.shards[shard_idx]
+                            .execute(Command::BatchSet(batch), virtual_time)
+                            .await;
                     } else {
-                        debug_assert!(false, "Invariant violated: single-element iterator must yield one item");
+                        debug_assert!(
+                            false,
+                            "Invariant violated: single-element iterator must yield one item"
+                        );
                     }
                 } else {
                     // Multi-shard: send all concurrently
-                    let futures: Vec<_> = shard_batches.into_iter().map(|(shard_idx, batch)| {
-                        self.shards[shard_idx].execute(Command::BatchSet(batch), virtual_time)
-                    }).collect();
+                    let futures: Vec<_> = shard_batches
+                        .into_iter()
+                        .map(|(shard_idx, batch)| {
+                            self.shards[shard_idx].execute(Command::BatchSet(batch), virtual_time)
+                        })
+                        .collect();
                     futures::future::join_all(futures).await;
                 }
 
@@ -987,16 +1062,27 @@ impl<T: TimeSource> ShardedActorState<T> {
 
             Command::Exists(keys) => {
                 let num_shards = self.num_shards;
-                let futures: Vec<_> = keys.iter().map(|key| {
-                    let shard_idx = hash_key(key, num_shards);
-                    self.shards[shard_idx].execute(Command::Exists(vec![key.clone()]), virtual_time)
-                }).collect();
+                let futures: Vec<_> = keys
+                    .iter()
+                    .map(|key| {
+                        let shard_idx = hash_key(key, num_shards);
+                        self.shards[shard_idx]
+                            .execute(Command::Exists(vec![key.clone()]), virtual_time)
+                    })
+                    .collect();
 
                 // Execute all EXISTS operations concurrently
                 let results = futures::future::join_all(futures).await;
-                let count: i64 = results.into_iter().filter_map(|r| {
-                    if let RespValue::Integer(n) = r { Some(n) } else { None }
-                }).sum();
+                let count: i64 = results
+                    .into_iter()
+                    .filter_map(|r| {
+                        if let RespValue::Integer(n) = r {
+                            Some(n)
+                        } else {
+                            None
+                        }
+                    })
+                    .sum();
                 RespValue::Integer(count)
             }
 
@@ -1004,7 +1090,9 @@ impl<T: TimeSource> ShardedActorState<T> {
                 if let Some(key) = cmd.get_primary_key() {
                     let shard_idx = hash_key(key, self.num_shards);
                     debug_assert!(shard_idx < self.num_shards, "Invalid shard index for key");
-                    self.shards[shard_idx].execute(cmd.clone(), virtual_time).await
+                    self.shards[shard_idx]
+                        .execute(cmd.clone(), virtual_time)
+                        .await
                 } else {
                     self.shards[0].execute(cmd.clone(), virtual_time).await
                 }

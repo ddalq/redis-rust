@@ -172,6 +172,10 @@ mod tests {
     #[test]
     fn test_fault_count() {
         // Verify we have 31+ faults as promised
-        assert!(ALL_FAULTS.len() >= 31, "Expected 31+ faults, got {}", ALL_FAULTS.len());
+        assert!(
+            ALL_FAULTS.len() >= 31,
+            "Expected 31+ faults, got {}",
+            ALL_FAULTS.len()
+        );
     }
 }

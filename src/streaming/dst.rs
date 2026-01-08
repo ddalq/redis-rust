@@ -22,9 +22,8 @@ use crate::redis::SDS;
 use crate::replication::lattice::{LamportClock, ReplicaId};
 use crate::replication::state::{ReplicatedValue, ReplicationDelta};
 use crate::streaming::{
-    InMemoryObjectStore, ObjectStore, RecoveryManager,
-    SegmentReader, SimulatedObjectStore, SimulatedStoreConfig, SimulatedStoreStats,
-    StreamingPersistence, WriteBufferConfig,
+    InMemoryObjectStore, ObjectStore, RecoveryManager, SegmentReader, SimulatedObjectStore,
+    SimulatedStoreConfig, SimulatedStoreStats, StreamingPersistence, WriteBufferConfig,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -184,7 +183,8 @@ impl StreamingWorkload {
 
     /// Record that a write was successfully persisted
     pub fn record_write(&mut self, key: &str, value: &str) {
-        self.expected_state.insert(key.to_string(), Some(value.to_string()));
+        self.expected_state
+            .insert(key.to_string(), Some(value.to_string()));
     }
 
     /// Record that a delete was successfully persisted
@@ -346,18 +346,10 @@ impl StreamingDSTHarness {
         let op_id = self.result.total_operations;
 
         let outcome = match &op {
-            StreamingOperation::Write { key, value } => {
-                self.execute_write(key, value).await
-            }
-            StreamingOperation::Delete { key } => {
-                self.execute_delete(key).await
-            }
-            StreamingOperation::Flush => {
-                self.execute_flush().await
-            }
-            StreamingOperation::CrashRecover => {
-                self.execute_crash_recover().await
-            }
+            StreamingOperation::Write { key, value } => self.execute_write(key, value).await,
+            StreamingOperation::Delete { key } => self.execute_delete(key).await,
+            StreamingOperation::Flush => self.execute_flush().await,
+            StreamingOperation::CrashRecover => self.execute_crash_recover().await,
         };
 
         // Record operation

@@ -32,8 +32,8 @@
 //! 3. **Configurable**: Per-fault probabilities, global multipliers
 //! 4. **Zero production overhead**: Compiles to nothing in production builds
 
-pub mod faults;
 pub mod config;
+pub mod faults;
 
 pub use config::FaultConfig;
 pub use faults::ALL_FAULTS;
@@ -371,7 +371,11 @@ mod tests {
         let stats = get_stats();
         assert_eq!(stats.checks.get(faults::network::PACKET_DROP), Some(&1000));
         // Triggers should be around 1% (10 +/- some variance)
-        let triggers = stats.triggers.get(faults::network::PACKET_DROP).copied().unwrap_or(0);
+        let triggers = stats
+            .triggers
+            .get(faults::network::PACKET_DROP)
+            .copied()
+            .unwrap_or(0);
         assert!(triggers > 0 && triggers < 100, "triggers: {}", triggers);
     }
 

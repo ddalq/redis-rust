@@ -21,8 +21,8 @@
 use crate::io::{ProductionTimeSource, TimeSource};
 use crate::replication::state::ReplicationDelta;
 use crate::streaming::{
-    Compression, Manifest, ManifestError, ManifestManager, ObjectStore, SegmentError,
-    SegmentInfo, SegmentReader, SegmentWriter,
+    Compression, Manifest, ManifestError, ManifestManager, ObjectStore, SegmentError, SegmentInfo,
+    SegmentReader, SegmentWriter,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -171,7 +171,13 @@ impl<S: ObjectStore + Clone + 'static> Compactor<S, ProductionTimeSource> {
         manifest_manager: ManifestManager<S>,
         config: CompactionConfig,
     ) -> Self {
-        Self::with_time_source(store, prefix, manifest_manager, config, ProductionTimeSource::new())
+        Self::with_time_source(
+            store,
+            prefix,
+            manifest_manager,
+            config,
+            ProductionTimeSource::new(),
+        )
     }
 }
 
@@ -242,7 +248,8 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
         // Calculate current timestamp for tombstone TTL
         // Uses TimeSource for zero-cost abstraction (syscall in production, virtual clock in simulation)
         let current_time = self.time_source.now_millis();
-        let tombstone_cutoff = current_time.saturating_sub(self.config.tombstone_ttl.as_millis() as u64);
+        let tombstone_cutoff =
+            current_time.saturating_sub(self.config.tombstone_ttl.as_millis() as u64);
 
         // Load all deltas from selected segments, handling missing files gracefully
         let mut deltas_before = 0u64;
@@ -278,7 +285,10 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
 
                                         // Keep latest delta for each key
                                         let should_insert = match key_to_delta.get(&delta.key) {
-                                            Some(existing) => delta.value.timestamp.time > existing.value.timestamp.time,
+                                            Some(existing) => {
+                                                delta.value.timestamp.time
+                                                    > existing.value.timestamp.time
+                                            }
                                             None => true,
                                         };
 
@@ -287,7 +297,10 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
                                         }
                                     }
                                     Err(e) => {
-                                        eprintln!("Failed to read delta from {}: {}", segment_info.key, e);
+                                        eprintln!(
+                                            "Failed to read delta from {}: {}",
+                                            segment_info.key, e
+                                        );
                                     }
                                 }
                             }
@@ -309,14 +322,14 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
 
         // Clean up manifest if only missing segments found
         if !missing_segments.is_empty() && key_to_delta.is_empty() && deltas_before == 0 {
-            let segments_removed: Vec<SegmentInfo> = actually_compacted
-                .iter()
-                .map(|s| (*s).clone())
-                .collect();
+            let segments_removed: Vec<SegmentInfo> =
+                actually_compacted.iter().map(|s| (*s).clone()).collect();
 
             let mut new_manifest = manifest.clone();
             let segment_ids: Vec<u64> = segments_removed.iter().map(|s| s.id).collect();
-            new_manifest.segments.retain(|s| !segment_ids.contains(&s.id));
+            new_manifest
+                .segments
+                .retain(|s| !segment_ids.contains(&s.id));
             new_manifest.version += 1;
             self.manifest_manager.save(&new_manifest).await?;
 
@@ -357,15 +370,15 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
 
         // If nothing remains, just remove the segments
         if key_to_delta.is_empty() {
-            let segments_removed: Vec<SegmentInfo> = actually_compacted
-                .iter()
-                .map(|s| (*s).clone())
-                .collect();
+            let segments_removed: Vec<SegmentInfo> =
+                actually_compacted.iter().map(|s| (*s).clone()).collect();
 
             // Update manifest - remove old segments
             let mut new_manifest = manifest.clone();
             let segment_ids: Vec<u64> = segments_removed.iter().map(|s| s.id).collect();
-            new_manifest.segments.retain(|s| !segment_ids.contains(&s.id));
+            new_manifest
+                .segments
+                .retain(|s| !segment_ids.contains(&s.id));
             new_manifest.version += 1;
             self.manifest_manager.save(&new_manifest).await?;
 
@@ -424,10 +437,7 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
 
         // Generate new segment ID
         let new_segment_id = manifest.next_segment_id;
-        let new_segment_key = format!(
-            "{}/segments/segment-{:08}.seg",
-            self.prefix, new_segment_id
-        );
+        let new_segment_key = format!("{}/segments/segment-{:08}.seg", self.prefix, new_segment_id);
 
         // Upload new segment
         self.store.put(&new_segment_key, &segment_data).await?;
@@ -442,14 +452,14 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
         };
 
         // Atomic manifest update
-        let segments_removed: Vec<SegmentInfo> = actually_compacted
-            .iter()
-            .map(|s| (*s).clone())
-            .collect();
+        let segments_removed: Vec<SegmentInfo> =
+            actually_compacted.iter().map(|s| (*s).clone()).collect();
         let segment_ids: Vec<u64> = segments_removed.iter().map(|s| s.id).collect();
 
         let mut new_manifest = manifest.clone();
-        new_manifest.segments.retain(|s| !segment_ids.contains(&s.id));
+        new_manifest
+            .segments
+            .retain(|s| !segment_ids.contains(&s.id));
         new_manifest.add_segment(new_segment.clone());
         new_manifest.next_segment_id = new_segment_id + 1;
         self.manifest_manager.save(&new_manifest).await?;
@@ -506,7 +516,8 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> Compactor<S, T> {
 /// Background compaction worker
 ///
 /// Generic over time source for DST compatibility.
-pub struct CompactionWorker<S: ObjectStore + Clone + 'static, T: TimeSource = ProductionTimeSource> {
+pub struct CompactionWorker<S: ObjectStore + Clone + 'static, T: TimeSource = ProductionTimeSource>
+{
     compactor: Compactor<S, T>,
     check_interval: Duration,
     shutdown: Arc<std::sync::atomic::AtomicBool>,
@@ -527,7 +538,10 @@ impl CompactionWorkerHandle {
 
 impl<S: ObjectStore + Clone + 'static, T: TimeSource> CompactionWorker<S, T> {
     /// Create a new compaction worker
-    pub fn new(compactor: Compactor<S, T>, check_interval: Duration) -> (Self, CompactionWorkerHandle) {
+    pub fn new(
+        compactor: Compactor<S, T>,
+        check_interval: Duration,
+    ) -> (Self, CompactionWorkerHandle) {
         let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let handle = CompactionWorkerHandle {
             shutdown: shutdown.clone(),
@@ -556,7 +570,11 @@ impl<S: ObjectStore + Clone + 'static, T: TimeSource> CompactionWorker<S, T> {
                     eprintln!(
                         "Compaction complete: removed {} segments, created {}, reclaimed {} bytes",
                         result.segments_removed.len(),
-                        if result.segment_created.is_some() { 1 } else { 0 },
+                        if result.segment_created.is_some() {
+                            1
+                        } else {
+                            0
+                        },
                         result.bytes_reclaimed
                     );
                 }
@@ -649,7 +667,8 @@ mod tests {
             make_delta("key1", "v1", 100, 1),
             make_delta("key2", "v2", 101, 1),
         ];
-        let (size0, min0, max0) = write_segment(&store, "test/segments/segment-00000000.seg", &deltas0).await;
+        let (size0, min0, max0) =
+            write_segment(&store, "test/segments/segment-00000000.seg", &deltas0).await;
         manifest.add_segment(SegmentInfo {
             id: 0,
             key: "test/segments/segment-00000000.seg".to_string(),
@@ -664,7 +683,8 @@ mod tests {
             make_delta("key3", "v3", 200, 1),
             make_delta("key4", "v4", 201, 1),
         ];
-        let (size1, min1, max1) = write_segment(&store, "test/segments/segment-00000001.seg", &deltas1).await;
+        let (size1, min1, max1) =
+            write_segment(&store, "test/segments/segment-00000001.seg", &deltas1).await;
         manifest.add_segment(SegmentInfo {
             id: 1,
             key: "test/segments/segment-00000001.seg".to_string(),
@@ -699,8 +719,14 @@ mod tests {
         assert!(store.exists(&new_segment.key).await.unwrap());
 
         // Verify old segments deleted
-        assert!(!store.exists("test/segments/segment-00000000.seg").await.unwrap());
-        assert!(!store.exists("test/segments/segment-00000001.seg").await.unwrap());
+        assert!(!store
+            .exists("test/segments/segment-00000000.seg")
+            .await
+            .unwrap());
+        assert!(!store
+            .exists("test/segments/segment-00000001.seg")
+            .await
+            .unwrap());
 
         // Verify manifest updated
         let new_manifest = manifest_manager.load().await.unwrap();
@@ -717,7 +743,8 @@ mod tests {
 
         // Write segment 0 with key1
         let deltas0 = vec![make_delta("key1", "old_value", 100, 1)];
-        let (size0, min0, max0) = write_segment(&store, "test/segments/segment-00000000.seg", &deltas0).await;
+        let (size0, min0, max0) =
+            write_segment(&store, "test/segments/segment-00000000.seg", &deltas0).await;
         manifest.add_segment(SegmentInfo {
             id: 0,
             key: "test/segments/segment-00000000.seg".to_string(),
@@ -729,7 +756,8 @@ mod tests {
 
         // Write segment 1 with same key1 but newer timestamp
         let deltas1 = vec![make_delta("key1", "new_value", 200, 1)];
-        let (size1, min1, max1) = write_segment(&store, "test/segments/segment-00000001.seg", &deltas1).await;
+        let (size1, min1, max1) =
+            write_segment(&store, "test/segments/segment-00000001.seg", &deltas1).await;
         manifest.add_segment(SegmentInfo {
             id: 1,
             key: "test/segments/segment-00000001.seg".to_string(),
@@ -779,7 +807,8 @@ mod tests {
             make_tombstone("deleted_key", 0, 1),
             make_delta("live_key", "value", 100, 1),
         ];
-        let (size0, min0, max0) = write_segment(&store, "test/segments/segment-00000000.seg", &deltas0).await;
+        let (size0, min0, max0) =
+            write_segment(&store, "test/segments/segment-00000000.seg", &deltas0).await;
         manifest.add_segment(SegmentInfo {
             id: 0,
             key: "test/segments/segment-00000000.seg".to_string(),
@@ -791,7 +820,8 @@ mod tests {
 
         // Need at least 2 segments for test config
         let deltas1 = vec![make_delta("another_key", "v", 200, 1)];
-        let (size1, min1, max1) = write_segment(&store, "test/segments/segment-00000001.seg", &deltas1).await;
+        let (size1, min1, max1) =
+            write_segment(&store, "test/segments/segment-00000001.seg", &deltas1).await;
         manifest.add_segment(SegmentInfo {
             id: 1,
             key: "test/segments/segment-00000001.seg".to_string(),
@@ -810,12 +840,8 @@ mod tests {
         // Wait for tombstone to expire
         tokio::time::sleep(Duration::from_millis(10)).await;
 
-        let mut compactor = Compactor::new(
-            store.clone(),
-            "test".to_string(),
-            manifest_manager,
-            config,
-        );
+        let mut compactor =
+            Compactor::new(store.clone(), "test".to_string(), manifest_manager, config);
 
         let result = compactor.compact().await.unwrap();
 
@@ -832,7 +858,8 @@ mod tests {
         // Create manifest with only 1 segment (below min_segments_to_compact)
         let mut manifest = Manifest::new(1);
         let deltas = vec![make_delta("key1", "v1", 100, 1)];
-        let (size, min_ts, max_ts) = write_segment(&store, "test/segments/segment-00000000.seg", &deltas).await;
+        let (size, min_ts, max_ts) =
+            write_segment(&store, "test/segments/segment-00000000.seg", &deltas).await;
         manifest.add_segment(SegmentInfo {
             id: 0,
             key: "test/segments/segment-00000000.seg".to_string(),
@@ -902,7 +929,8 @@ mod tests {
 
         // Write segments with only old tombstones
         let deltas0 = vec![make_tombstone("key1", 0, 1)];
-        let (size0, min0, max0) = write_segment(&store, "test/segments/segment-00000000.seg", &deltas0).await;
+        let (size0, min0, max0) =
+            write_segment(&store, "test/segments/segment-00000000.seg", &deltas0).await;
         manifest.add_segment(SegmentInfo {
             id: 0,
             key: "test/segments/segment-00000000.seg".to_string(),
@@ -913,7 +941,8 @@ mod tests {
         });
 
         let deltas1 = vec![make_tombstone("key2", 0, 1)];
-        let (size1, min1, max1) = write_segment(&store, "test/segments/segment-00000001.seg", &deltas1).await;
+        let (size1, min1, max1) =
+            write_segment(&store, "test/segments/segment-00000001.seg", &deltas1).await;
         manifest.add_segment(SegmentInfo {
             id: 1,
             key: "test/segments/segment-00000001.seg".to_string(),

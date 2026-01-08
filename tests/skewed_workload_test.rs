@@ -4,8 +4,8 @@
 //! hot keys under Zipfian-like access patterns.
 
 use redis_sim::production::{
-    AdaptiveConfig, AdaptiveReplicationManager, HotKeyConfig, HotKeyDetector,
-    LoadBalancerConfig, ScalingDecision, ShardLoadBalancer, ShardMetrics,
+    AdaptiveConfig, AdaptiveReplicationManager, HotKeyConfig, HotKeyDetector, LoadBalancerConfig,
+    ScalingDecision, ShardLoadBalancer, ShardMetrics,
 };
 
 /// Zipfian distribution generator (simplified)
@@ -242,7 +242,10 @@ fn test_load_balancer_with_skewed_shard_load() {
             // Also acceptable if total load triggers scale-up
             println!("Scale-up recommended due to high total load");
         }
-        _ => panic!("Expected RebalanceRecommended or AddShard, got {:?}", decision),
+        _ => panic!(
+            "Expected RebalanceRecommended or AddShard, got {:?}",
+            decision
+        ),
     }
 }
 
@@ -375,10 +378,7 @@ fn test_realistic_workload_simulation() {
     let top_10_pct = (top_10_accesses as f64 / total_accesses as f64) * 100.0;
 
     println!("\nAccess distribution:");
-    println!(
-        "  Top 10 keys: {:.1}% of all accesses",
-        top_10_pct
-    );
+    println!("  Top 10 keys: {:.1}% of all accesses", top_10_pct);
     println!(
         "  Top 1% keys: {:.1}% of all accesses",
         sorted_counts

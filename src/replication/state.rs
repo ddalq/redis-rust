@@ -1,7 +1,7 @@
+use super::config::ConsistencyLevel;
 use super::lattice::{
     GCounter, GSet, LamportClock, LwwRegister, ORSet, PNCounter, ReplicaId, VectorClock,
 };
-use super::config::ConsistencyLevel;
 use crate::redis::SDS;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -95,14 +95,17 @@ impl CrdtValue {
         match (self, other) {
             (CrdtValue::Lww(a), CrdtValue::Lww(b)) => Ok(CrdtValue::Lww(a.merge(b))),
             (CrdtValue::GCounter(a), CrdtValue::GCounter(b)) => Ok(CrdtValue::GCounter(a.merge(b))),
-            (CrdtValue::PNCounter(a), CrdtValue::PNCounter(b)) => Ok(CrdtValue::PNCounter(a.merge(b))),
+            (CrdtValue::PNCounter(a), CrdtValue::PNCounter(b)) => {
+                Ok(CrdtValue::PNCounter(a.merge(b)))
+            }
             (CrdtValue::GSet(a), CrdtValue::GSet(b)) => Ok(CrdtValue::GSet(a.merge(b))),
             (CrdtValue::ORSet(a), CrdtValue::ORSet(b)) => Ok(CrdtValue::ORSet(a.merge(b))),
             (CrdtValue::Hash(a), CrdtValue::Hash(b)) => {
                 // Merge each field using LWW semantics
                 let mut merged = a.clone();
                 for (field, b_lww) in b {
-                    merged.entry(field.clone())
+                    merged
+                        .entry(field.clone())
                         .and_modify(|a_lww| *a_lww = a_lww.merge(b_lww))
                         .or_insert_with(|| b_lww.clone());
                 }
@@ -391,11 +394,9 @@ impl ReplicatedValue {
     /// - If types don't match: LWW resolution based on timestamp (no data loss)
     pub fn merge(&self, other: &Self) -> Self {
         // Use safe merge that handles type conflicts with LWW semantics
-        let merged_crdt = self.crdt.merge_with_timestamps(
-            &other.crdt,
-            &self.timestamp,
-            &other.timestamp,
-        );
+        let merged_crdt =
+            self.crdt
+                .merge_with_timestamps(&other.crdt, &self.timestamp, &other.timestamp);
         let merged_vc = match (&self.vector_clock, &other.vector_clock) {
             (Some(vc1), Some(vc2)) => Some(vc1.merge(vc2)),
             (Some(vc), None) | (None, Some(vc)) => Some(vc.clone()),
@@ -495,7 +496,9 @@ impl ReplicatedValue {
         }
 
         if let CrdtValue::Hash(ref mut hash) = self.crdt {
-            let lww = hash.entry(field.clone()).or_insert_with(|| LwwRegister::new(clock.replica_id));
+            let lww = hash
+                .entry(field.clone())
+                .or_insert_with(|| LwwRegister::new(clock.replica_id));
             lww.set(value, clock);
         }
         self.timestamp = *clock;
@@ -615,8 +618,14 @@ impl ShardReplicaState {
         }
     }
 
-    pub fn record_write(&mut self, key: String, value: SDS, expiry_ms: Option<u64>) -> ReplicationDelta {
-        let mut replicated = self.replicated_keys
+    pub fn record_write(
+        &mut self,
+        key: String,
+        value: SDS,
+        expiry_ms: Option<u64>,
+    ) -> ReplicationDelta {
+        let mut replicated = self
+            .replicated_keys
             .remove(&key)
             .unwrap_or_else(|| ReplicatedValue::new(self.replica_id));
 
@@ -650,7 +659,11 @@ impl ShardReplicaState {
     /// Record a hash field write (HSET)
     ///
     /// TigerStyle: Preconditions checked, postconditions verified
-    pub fn record_hash_write(&mut self, key: String, fields: Vec<(String, SDS)>) -> ReplicationDelta {
+    pub fn record_hash_write(
+        &mut self,
+        key: String,
+        fields: Vec<(String, SDS)>,
+    ) -> ReplicationDelta {
         // TigerStyle: Preconditions
         debug_assert!(!key.is_empty(), "Precondition: key must not be empty");
         debug_assert!(!fields.is_empty(), "Precondition: fields must not be empty");
@@ -660,13 +673,11 @@ impl ShardReplicaState {
         #[cfg(debug_assertions)]
         let field_names: Vec<String> = fields.iter().map(|(f, _)| f.clone()).collect();
 
-        let mut replicated = self.replicated_keys
-            .remove(&key)
-            .unwrap_or_else(|| {
-                let mut rv = ReplicatedValue::new(self.replica_id);
-                rv.crdt = CrdtValue::new_hash();
-                rv
-            });
+        let mut replicated = self.replicated_keys.remove(&key).unwrap_or_else(|| {
+            let mut rv = ReplicatedValue::new(self.replica_id);
+            rv.crdt = CrdtValue::new_hash();
+            rv
+        });
 
         // Ensure it's a hash (in case key existed as different type)
         if !replicated.is_hash() {
@@ -690,7 +701,10 @@ impl ShardReplicaState {
                 key
             );
             debug_assert!(
-                self.replicated_keys.get(&key).map(|v| v.is_hash()).unwrap_or(false),
+                self.replicated_keys
+                    .get(&key)
+                    .map(|v| v.is_hash())
+                    .unwrap_or(false),
                 "Postcondition: key '{}' must be a hash type",
                 key
             );
@@ -717,7 +731,11 @@ impl ShardReplicaState {
     /// Record a hash field delete (HDEL)
     ///
     /// TigerStyle: Preconditions checked, postconditions verified
-    pub fn record_hash_delete(&mut self, key: String, fields: Vec<String>) -> Option<ReplicationDelta> {
+    pub fn record_hash_delete(
+        &mut self,
+        key: String,
+        fields: Vec<String>,
+    ) -> Option<ReplicationDelta> {
         // TigerStyle: Preconditions
         debug_assert!(!key.is_empty(), "Precondition: key must not be empty");
         debug_assert!(!fields.is_empty(), "Precondition: fields must not be empty");
@@ -846,13 +864,25 @@ mod tests {
 
         // Values should match
         assert_eq!(
-            hash1.get("field1").and_then(|lww| lww.get()).map(|s| s.as_bytes()),
-            hash2.get("field1").and_then(|lww| lww.get()).map(|s| s.as_bytes()),
+            hash1
+                .get("field1")
+                .and_then(|lww| lww.get())
+                .map(|s| s.as_bytes()),
+            hash2
+                .get("field1")
+                .and_then(|lww| lww.get())
+                .map(|s| s.as_bytes()),
             "field1 values should match"
         );
         assert_eq!(
-            hash1.get("field2").and_then(|lww| lww.get()).map(|s| s.as_bytes()),
-            hash2.get("field2").and_then(|lww| lww.get()).map(|s| s.as_bytes()),
+            hash1
+                .get("field2")
+                .and_then(|lww| lww.get())
+                .map(|s| s.as_bytes()),
+            hash2
+                .get("field2")
+                .and_then(|lww| lww.get())
+                .map(|s| s.as_bytes()),
             "field2 values should match"
         );
     }
@@ -908,10 +938,8 @@ mod tests {
         state2.apply_remote_delta(delta1.clone());
 
         // Delete field1 from state1
-        let delete_delta = state1.record_hash_delete(
-            "myhash".to_string(),
-            vec!["field1".to_string()],
-        );
+        let delete_delta =
+            state1.record_hash_delete("myhash".to_string(), vec!["field1".to_string()]);
 
         // Apply deletion to state2
         if let Some(d) = delete_delta {
@@ -925,17 +953,29 @@ mod tests {
         // field1 should be tombstoned (value None or tombstone=true)
         let field1_lww_1 = hash1.get("field1").unwrap();
         let field1_lww_2 = hash2.get("field1").unwrap();
-        assert!(field1_lww_1.tombstone, "field1 should be tombstoned in state1");
-        assert!(field1_lww_2.tombstone, "field1 should be tombstoned in state2");
+        assert!(
+            field1_lww_1.tombstone,
+            "field1 should be tombstoned in state1"
+        );
+        assert!(
+            field1_lww_2.tombstone,
+            "field1 should be tombstoned in state2"
+        );
 
         // field2 should still have value
         assert_eq!(
-            hash1.get("field2").and_then(|lww| lww.get()).map(|s| s.as_bytes()),
+            hash1
+                .get("field2")
+                .and_then(|lww| lww.get())
+                .map(|s| s.as_bytes()),
             Some(b"value2".as_slice()),
             "field2 should still have value in state1"
         );
         assert_eq!(
-            hash2.get("field2").and_then(|lww| lww.get()).map(|s| s.as_bytes()),
+            hash2
+                .get("field2")
+                .and_then(|lww| lww.get())
+                .map(|s| s.as_bytes()),
             Some(b"value2".as_slice()),
             "field2 should still have value in state2"
         );
@@ -958,10 +998,8 @@ mod tests {
         state2.apply_remote_delta(write_delta.clone());
 
         // r2 deletes the same field (happens after write due to clock)
-        let delete_delta = state2.record_hash_delete(
-            "myhash".to_string(),
-            vec!["field".to_string()],
-        );
+        let delete_delta =
+            state2.record_hash_delete("myhash".to_string(), vec!["field".to_string()]);
 
         // Apply delete to r1
         if let Some(d) = delete_delta {
@@ -972,8 +1010,14 @@ mod tests {
         let hash1 = state1.get_replicated("myhash").unwrap().get_hash().unwrap();
         let hash2 = state2.get_replicated("myhash").unwrap().get_hash().unwrap();
 
-        assert!(hash1.get("field").unwrap().tombstone, "field should be tombstoned in state1");
-        assert!(hash2.get("field").unwrap().tombstone, "field should be tombstoned in state2");
+        assert!(
+            hash1.get("field").unwrap().tombstone,
+            "field should be tombstoned in state1"
+        );
+        assert!(
+            hash2.get("field").unwrap().tombstone,
+            "field should be tombstoned in state2"
+        );
     }
 
     /// DST-style multi-seed test for hash convergence
@@ -1036,24 +1080,40 @@ mod tests {
 
             // Verify all replicas have same field values
             if let (Some(Some(h1)), Some(Some(h2)), Some(Some(h3))) = (hash1, hash2, hash3) {
-                assert_eq!(h1.len(), h2.len(), "seed {}: hash1 and hash2 should have same field count", seed);
-                assert_eq!(h2.len(), h3.len(), "seed {}: hash2 and hash3 should have same field count", seed);
+                assert_eq!(
+                    h1.len(),
+                    h2.len(),
+                    "seed {}: hash1 and hash2 should have same field count",
+                    seed
+                );
+                assert_eq!(
+                    h2.len(),
+                    h3.len(),
+                    "seed {}: hash2 and hash3 should have same field count",
+                    seed
+                );
 
                 for (field, lww1) in h1.iter() {
-                    let lww2 = h2.get(field).expect(&format!("seed {}: field {} missing in hash2", seed, field));
-                    let lww3 = h3.get(field).expect(&format!("seed {}: field {} missing in hash3", seed, field));
+                    let lww2 = h2
+                        .get(field)
+                        .expect(&format!("seed {}: field {} missing in hash2", seed, field));
+                    let lww3 = h3
+                        .get(field)
+                        .expect(&format!("seed {}: field {} missing in hash3", seed, field));
 
                     assert_eq!(
                         lww1.get().map(|s| s.as_bytes()),
                         lww2.get().map(|s| s.as_bytes()),
                         "seed {}: field {} value mismatch between hash1 and hash2",
-                        seed, field
+                        seed,
+                        field
                     );
                     assert_eq!(
                         lww2.get().map(|s| s.as_bytes()),
                         lww3.get().map(|s| s.as_bytes()),
                         "seed {}: field {} value mismatch between hash2 and hash3",
-                        seed, field
+                        seed,
+                        field
                     );
                 }
             }
@@ -1196,7 +1256,11 @@ mod tests {
             let mut state3 = ShardReplicaState::new(r3, ConsistencyLevel::Eventual);
 
             // Simulate concurrent HINCRBY from all replicas
-            let values = [(seed * 10) as i64, (seed * 10 + 5) as i64, (seed * 10 + 3) as i64];
+            let values = [
+                (seed * 10) as i64,
+                (seed * 10 + 5) as i64,
+                (seed * 10 + 3) as i64,
+            ];
 
             let delta1 = state1.record_hash_write(
                 "counter".to_string(),
@@ -1258,16 +1322,8 @@ mod tests {
         let mut state2 = ShardReplicaState::new(r2, ConsistencyLevel::Eventual);
 
         // Both replicas do SET NX (both think key doesn't exist)
-        let delta1 = state1.record_write(
-            "lock".to_string(),
-            SDS::from_str("owner_r1"),
-            None,
-        );
-        let delta2 = state2.record_write(
-            "lock".to_string(),
-            SDS::from_str("owner_r2"),
-            None,
-        );
+        let delta1 = state1.record_write("lock".to_string(), SDS::from_str("owner_r1"), None);
+        let delta2 = state2.record_write("lock".to_string(), SDS::from_str("owner_r2"), None);
 
         // Apply cross-replica deltas
         state1.apply_remote_delta(delta2.clone());
@@ -1342,8 +1398,14 @@ mod tests {
             state1.apply_remote_delta(delta2.clone());
             state2.apply_remote_delta(delta1.clone());
 
-            let val1 = state1.get_replicated(&format!("key_{}", seed)).unwrap().get();
-            let val2 = state2.get_replicated(&format!("key_{}", seed)).unwrap().get();
+            let val1 = state1
+                .get_replicated(&format!("key_{}", seed))
+                .unwrap()
+                .get();
+            let val2 = state2
+                .get_replicated(&format!("key_{}", seed))
+                .unwrap()
+                .get();
 
             assert_eq!(
                 val1.map(|s| String::from_utf8_lossy(s.as_bytes()).to_string()),
@@ -1365,7 +1427,10 @@ mod tests {
         let gcounter = CrdtValue::new_gcounter();
 
         let result = lww.try_merge(&gcounter);
-        assert!(result.is_err(), "try_merge should return error for type mismatch");
+        assert!(
+            result.is_err(),
+            "try_merge should return error for type mismatch"
+        );
 
         let err = result.unwrap_err();
         assert_eq!(err.self_type, "lww");

@@ -47,19 +47,13 @@ pub enum GossipMessage {
     SetRouter(GossipRouter),
 
     /// Check if selective gossip is active
-    IsSelective {
-        response: oneshot::Sender<bool>,
-    },
+    IsSelective { response: oneshot::Sender<bool> },
 
     /// Get current epoch
-    GetEpoch {
-        response: oneshot::Sender<u64>,
-    },
+    GetEpoch { response: oneshot::Sender<u64> },
 
     /// Graceful shutdown
-    Shutdown {
-        response: oneshot::Sender<()>,
-    },
+    Shutdown { response: oneshot::Sender<()> },
 }
 
 /// Handle for communicating with the GossipActor
@@ -105,7 +99,11 @@ impl GossipActorHandle {
     /// Drain all outbound messages (blocking)
     pub async fn drain_outbound(&self) -> Vec<RoutedMessage> {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(GossipMessage::DrainOutbound { response: tx }).is_err() {
+        if self
+            .tx
+            .send(GossipMessage::DrainOutbound { response: tx })
+            .is_err()
+        {
             return Vec::new();
         }
         rx.await.unwrap_or_default()
@@ -119,7 +117,11 @@ impl GossipActorHandle {
     /// Check if selective gossip is active
     pub async fn is_selective(&self) -> bool {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(GossipMessage::IsSelective { response: tx }).is_err() {
+        if self
+            .tx
+            .send(GossipMessage::IsSelective { response: tx })
+            .is_err()
+        {
             return false;
         }
         rx.await.unwrap_or(false)
@@ -128,7 +130,11 @@ impl GossipActorHandle {
     /// Get current epoch
     pub async fn get_epoch(&self) -> u64 {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(GossipMessage::GetEpoch { response: tx }).is_err() {
+        if self
+            .tx
+            .send(GossipMessage::GetEpoch { response: tx })
+            .is_err()
+        {
             return 0;
         }
         rx.await.unwrap_or(0)
@@ -137,7 +143,11 @@ impl GossipActorHandle {
     /// Graceful shutdown
     pub async fn shutdown(&self) {
         let (tx, rx) = oneshot::channel();
-        if self.tx.send(GossipMessage::Shutdown { response: tx }).is_ok() {
+        if self
+            .tx
+            .send(GossipMessage::Shutdown { response: tx })
+            .is_ok()
+        {
             let _ = rx.await;
         }
     }
@@ -258,9 +268,9 @@ mod tests {
         let handle = GossipActor::spawn(test_config());
 
         // Create a test delta
-        use crate::replication::state::{ReplicatedValue, ReplicationDelta};
-        use crate::replication::lattice::LamportClock;
         use crate::redis::SDS;
+        use crate::replication::lattice::LamportClock;
+        use crate::replication::state::{ReplicatedValue, ReplicationDelta};
 
         let replica_id = ReplicaId::new(1);
         let clock = LamportClock::new(replica_id);

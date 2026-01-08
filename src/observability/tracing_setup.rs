@@ -29,7 +29,7 @@ pub fn init(config: &DatadogConfig) -> Result<(), Box<dyn std::error::Error + Se
                     opentelemetry::KeyValue::new("service.name", config.service_name.clone()),
                     opentelemetry::KeyValue::new("service.version", config.version.clone()),
                     opentelemetry::KeyValue::new("deployment.environment", config.env.clone()),
-                ]))
+                ])),
         )
         .install_batch(opentelemetry_sdk::runtime::Tokio)?;
 
