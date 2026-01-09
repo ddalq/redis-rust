@@ -34,7 +34,6 @@
 #![allow(clippy::derive_ord_xor_partial_ord)]
 #![allow(clippy::unwrap_or_default)]
 #![allow(clippy::io_other_error)]
-#![allow(clippy::option_map_or_none)]
 #![allow(clippy::only_used_in_recursion)]
 #![allow(clippy::iter_cloned_collect)]
 #![allow(clippy::match_single_binding)]
