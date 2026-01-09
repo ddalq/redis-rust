@@ -327,7 +327,7 @@ jobs:
             --node-count 3 \
             --time-limit 60 \
             --rate 100 \
-            --concurrency 10 \
+            --concurrency 6 \
             2>&1 | tee maelstrom-output.txt
 
           # Check for success
