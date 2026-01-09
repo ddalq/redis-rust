@@ -487,8 +487,8 @@ mod tests {
 
         // Get hot keys
         let hot_keys = handle.get_hot_keys(10, timestamp + 100).await;
-        // Should have at least one entry (our hot_key)
-        assert!(!hot_keys.is_empty() || true); // May be empty if decay is aggressive
+        // May be empty if decay is aggressive, so we just verify it doesn't panic
+        let _ = hot_keys;
 
         handle.shutdown().await;
     }

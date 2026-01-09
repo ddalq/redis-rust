@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_closure)]
 //! Telemetry-Style Metrics Server
 //!
 //! A metrics aggregation server that showcases the unique features of redis-rust:

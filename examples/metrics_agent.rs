@@ -1,3 +1,4 @@
+#![allow(clippy::manual_strip)]
 //! Metrics Agent Example
 //!
 //! Demonstrates high-throughput metric submission using pipelining.

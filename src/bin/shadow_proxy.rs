@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
 //! Shadow Testing Proxy for Redis
 //!
 //! Forwards all Redis commands to both the official Redis server and

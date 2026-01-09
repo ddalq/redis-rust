@@ -78,6 +78,7 @@ impl<T> ResponseSlot<T> {
 
     /// Take the value if ready (non-blocking)
     #[inline]
+    #[allow(dead_code)]
     pub fn try_recv(&self) -> Option<T> {
         self.value.lock().take()
     }
@@ -120,6 +121,7 @@ impl<T> Future for ResponseFuture<T> {
 /// Lock-free acquisition and release using ArrayQueue.
 pub struct ResponsePool<T> {
     pool: ArrayQueue<Arc<ResponseSlot<T>>>,
+    #[allow(dead_code)]
     capacity: usize,
 }
 
@@ -166,12 +168,14 @@ impl<T> ResponsePool<T> {
 
     /// Get the current number of pooled slots
     #[inline]
+    #[allow(dead_code)]
     pub fn available(&self) -> usize {
         self.pool.len()
     }
 
     /// Get the pool capacity
     #[inline]
+    #[allow(dead_code)]
     pub fn capacity(&self) -> usize {
         self.capacity
     }

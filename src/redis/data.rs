@@ -24,7 +24,7 @@ impl SDS {
     #[cfg(debug_assertions)]
     fn verify_invariants(&self) {
         match self {
-            SDS::Inline { len, data } => {
+            SDS::Inline { len, data: _ } => {
                 // Invariant 1: Inline len must be <= SSO_MAX_LEN
                 debug_assert!(
                     (*len as usize) <= SSO_MAX_LEN,
@@ -39,7 +39,7 @@ impl SDS {
                     "Invariant violated: len() must equal stored len"
                 );
             }
-            SDS::Heap(data) => {
+            SDS::Heap(_data) => {
                 // Invariant: Heap strings should be > SSO_MAX_LEN
                 // (unless created via append that didn't optimize)
                 // This is a soft invariant - we don't enforce it for simplicity

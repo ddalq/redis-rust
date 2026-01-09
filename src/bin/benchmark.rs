@@ -1,3 +1,4 @@
+#![allow(clippy::unused_io_amount)]
 use std::env;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

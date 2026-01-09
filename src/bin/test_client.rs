@@ -1,3 +1,4 @@
+#![allow(clippy::unused_io_amount)]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 

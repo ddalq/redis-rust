@@ -1,3 +1,4 @@
+#![allow(clippy::manual_strip)]
 //! Metrics Dashboard Example
 //!
 //! Demonstrates querying metrics and hot key detection.

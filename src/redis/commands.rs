@@ -4258,7 +4258,7 @@ impl CommandExecutor {
 
         // Track initial state for postcondition verification
         #[cfg(debug_assertions)]
-        let initial_key_count = self.data.len();
+        let _initial_key_count = self.data.len();
 
         // Cache the script for EVALSHA (uses shared cache if available)
         #[allow(unused_variables)]
@@ -4399,10 +4399,10 @@ impl CommandExecutor {
                 "Postcondition: script must be cached after execution"
             );
 
-            // Verify data integrity - no negative counts possible
+            // Verify data integrity - key count should be reasonable
             debug_assert!(
-                self.data.len() >= 0,
-                "Postcondition: data count must be non-negative"
+                self.data.len() <= 1_000_000_000,
+                "Postcondition: data count must be reasonable (< 1B keys)"
             );
         }
 

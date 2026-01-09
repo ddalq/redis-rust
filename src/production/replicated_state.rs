@@ -3,7 +3,7 @@ use super::replicated_shard_actor::{ReplicatedShardActor, ReplicatedShardHandle}
 use crate::io::{ProductionTimeSource, TimeSource};
 use crate::redis::{Command, RespValue};
 use crate::replication::gossip::GossipState;
-use crate::replication::{ConsistencyLevel, ReplicaId, ReplicationConfig, ReplicationDelta};
+use crate::replication::{ReplicaId, ReplicationConfig, ReplicationDelta};
 use crate::simulator::VirtualTime;
 use crate::streaming::DeltaSinkSender;
 use parking_lot::RwLock;

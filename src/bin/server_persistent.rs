@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 //! Redis Server with Streaming Persistence
 //!
 //! A Redis-compatible server that persists data to object store using

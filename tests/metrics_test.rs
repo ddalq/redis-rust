@@ -1,3 +1,5 @@
+#![allow(clippy::iter_cloned_collect)]
+#![allow(clippy::needless_range_loop)]
 //! Metrics Module Integration Tests
 //!
 //! Tests the Telemetry-style metrics aggregation service, verifying:
