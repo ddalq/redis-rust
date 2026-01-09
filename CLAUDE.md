@@ -481,6 +481,56 @@ When updating `BENCHMARK_RESULTS.md`, include:
 
 **Important**: All Redis vs Rust comparison numbers MUST come from Docker benchmarks.
 
+## Architecture Decision Records (ADRs)
+
+ADRs in `docs/adr/` are **living decision logs** that track architectural decisions as they evolve. They are not static documents - update them as you work.
+
+### ADR Index
+
+| ADR | Title | Summary |
+|-----|-------|---------|
+| [001](docs/adr/001-simulation-first-development.md) | Simulation-First Development | FoundationDB/TigerBeetle-style DST |
+| [002](docs/adr/002-actor-per-shard-architecture.md) | Actor-per-Shard Architecture | Lock-free message passing |
+| [003](docs/adr/003-tigerstyle-coding-standards.md) | TigerStyle Coding Standards | Safety-first engineering |
+| [004](docs/adr/004-anna-kvs-crdt-replication.md) | Anna KVS CRDT Replication | Eventual/causal consistency |
+| [005](docs/adr/005-streaming-persistence.md) | Streaming Persistence | Cloud-native S3 storage |
+| [006](docs/adr/006-zero-copy-resp-parser.md) | Zero-Copy RESP Parser | High-performance parsing |
+| [007](docs/adr/007-feature-flag-optimizations.md) | Feature Flag Optimizations | Measurable performance tuning |
+| [008](docs/adr/008-docker-benchmark-methodology.md) | Docker Benchmark Methodology | Fair performance comparisons |
+
+### When to Update an ADR
+
+**During development**, add a Decision Log entry when you:
+- Choose between alternative implementations
+- Discover constraints that affect the architecture
+- Defer or reject a planned feature
+- Change approach based on learnings
+- Make trade-offs during implementation
+
+**After commits**, update Implementation Status when:
+- New components are implemented
+- Features are validated/tested
+- Items move from "Not Yet Implemented" to "Implemented"
+
+### How to Update an ADR
+
+1. **Add a Decision Log entry** (most common):
+   ```markdown
+   | 2026-01-15 | Use batch inserts for persistence | Reduces write amplification |
+   ```
+
+2. **Update Implementation Status** tables as work progresses
+
+3. **Update main sections** only if the decision fundamentally changes the approach
+
+### Creating a New ADR
+
+When making a decision that doesn't fit existing ADRs:
+1. Copy `docs/adr/000-template.md` to `docs/adr/NNN-descriptive-title.md`
+2. Fill in Context, Decision, Consequences
+3. Add initial Decision Log entry
+4. Update `docs/adr/README.md` index
+
 ## Dependencies
 
 Core dependencies and their purposes:
