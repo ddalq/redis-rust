@@ -1,6 +1,22 @@
 # Skills for redis-rust Development
 
+This document provides **how-to patterns** for implementing features in redis-rust. For the **architectural rationale** behind these patterns, see the [Architecture Decision Records](adr/README.md).
+
+| Skill | Related ADR |
+|-------|-------------|
+| Simulation-First Development | [ADR-001](adr/001-simulation-first-development.md) |
+| Actor Pattern Implementation | [ADR-002](adr/002-actor-per-shard-architecture.md) |
+| TigerStyle Coding | [ADR-003](adr/003-tigerstyle-coding-standards.md) |
+| VOPR-Style Testing | [ADR-001](adr/001-simulation-first-development.md) |
+| Segment File Format Design | [ADR-005](adr/005-streaming-persistence.md) |
+| Manifest-Based Recovery | [ADR-005](adr/005-streaming-persistence.md) |
+| Commit Verification | [ADR-008](adr/008-docker-benchmark-methodology.md) |
+
+---
+
 ## Skill: Simulation-First Development
+
+> **ADR**: [001-simulation-first-development.md](adr/001-simulation-first-development.md)
 
 ### When to Use
 When implementing any new feature that involves:
@@ -59,6 +75,8 @@ When implementing any new feature that involves:
 ---
 
 ## Skill: Actor Pattern Implementation
+
+> **ADR**: [002-actor-per-shard-architecture.md](adr/002-actor-per-shard-architecture.md)
 
 ### When to Use
 When you need:
@@ -144,6 +162,8 @@ pub fn spawn_my_actor(initial_state: MyState) -> (MyActorHandle, JoinHandle<()>)
 
 ## Skill: TigerStyle Coding
 
+> **ADR**: [003-tigerstyle-coding-standards.md](adr/003-tigerstyle-coding-standards.md)
+
 ### Principles
 
 1. **Assertions for invariants**
@@ -202,6 +222,8 @@ pub fn spawn_my_actor(initial_state: MyState) -> (MyActorHandle, JoinHandle<()>)
 ---
 
 ## Skill: VOPR-Style Testing
+
+> **ADR**: [001-simulation-first-development.md](adr/001-simulation-first-development.md) (VOPR is part of DST)
 
 ### Concept
 VOPR (Viewstamped Operation Replication Protocol) style testing uses:
@@ -319,6 +341,8 @@ tar -xf maelstrom.tar.bz2
 
 ## Skill: Segment File Format Design
 
+> **ADR**: [005-streaming-persistence.md](adr/005-streaming-persistence.md)
+
 ### Principles
 1. **Header with magic bytes**: Detect corruption/wrong file type
 2. **Version field**: Support format evolution
@@ -349,6 +373,8 @@ tar -xf maelstrom.tar.bz2
 ---
 
 ## Skill: Manifest-Based Recovery
+
+> **ADR**: [005-streaming-persistence.md](adr/005-streaming-persistence.md)
 
 ### Concept
 Use a manifest file to track which segments exist and their order. This enables:
@@ -388,6 +414,8 @@ impl ManifestManager {
 ---
 
 ## Skill: Commit Verification
+
+> **ADR**: [008-docker-benchmark-methodology.md](adr/008-docker-benchmark-methodology.md)
 
 ### When to Use
 Before every commit to ensure code quality and documentation are maintained.
