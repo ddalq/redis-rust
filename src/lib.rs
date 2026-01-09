@@ -1,5 +1,6 @@
 // Clippy configuration: allow some stylistic lints to focus on correctness
 // These are all pedantic/style lints that don't affect correctness
+#![allow(clippy::manual_is_multiple_of)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::type_complexity)]

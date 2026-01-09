@@ -4719,7 +4719,7 @@ impl CommandExecutor {
                     }
                 }
 
-                if !(args.len() - i) % 2 == 0 || i >= args.len() {
+                if (args.len() - i) % 2 != 0 || i >= args.len() {
                     return Err("ZADD requires score-member pairs".to_string());
                 }
 
@@ -5149,7 +5149,7 @@ impl CommandExecutor {
                     }
                 }
 
-                if !(args.len() - i) % 2 == 0 || i >= args.len() {
+                if (args.len() - i) % 2 != 0 || i >= args.len() {
                     return Err("ZADD requires score-member pairs".to_string());
                 }
 
