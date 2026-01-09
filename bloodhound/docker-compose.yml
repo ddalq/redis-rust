@@ -5,6 +5,7 @@ version: "3.8"
 
 services:
   redis:
+    image: redis-rust:bloodhound
     build:
       context: ..
       dockerfile: docker/Dockerfile

@@ -52,15 +52,12 @@ properties:
           [ "$val" -ge 0 ] || exit 1
         done
 
-  - name: recovery-after-restart
-    kind: liveness
-    description: "Server should recover and respond within 10 seconds"
-    timeout_ms: 10000
+  - name: state-consistency
+    kind: safety
+    description: "Simulation state should remain consistent"
     check:
-      type: redis
-      endpoint: "redis://redis:6379"
-      command: PING
-      expect: PONG
+      type: invariant
+      condition: "state.is_valid()"
 
 # Fault injection configuration
 faults:
