@@ -318,12 +318,12 @@ jobs:
           fi
 
       - name: Build Maelstrom binary
-        run: cargo build --release --bin maelstrom_kv_replicated
+        run: cargo build --release --bin maelstrom-kv-replicated
 
       - name: Run Maelstrom lin-kv test
         run: |
           ./maelstrom/maelstrom test -w lin-kv \
-            --bin ./target/release/maelstrom_kv_replicated \
+            --bin ./target/release/maelstrom-kv-replicated \
             --node-count 3 \
             --time-limit 60 \
             --rate 100 \
