@@ -4567,7 +4567,7 @@ impl CommandExecutor {
                 Ok(Command::HGet(args[0].clone(), SDS::from_str(&args[1])))
             }
             "HSET" => {
-                if args.len() < 3 || args.len().is_multiple_of(2) {
+                if args.len() < 3 || args.len() % 2 == 0 {
                     return Err("HSET requires key and field-value pairs".to_string());
                 }
                 let key = args[0].clone();
@@ -4719,7 +4719,7 @@ impl CommandExecutor {
                     }
                 }
 
-                if !(args.len() - i).is_multiple_of(2) || i >= args.len() {
+                if !(args.len() - i) % 2 == 0 || i >= args.len() {
                     return Err("ZADD requires score-member pairs".to_string());
                 }
 
@@ -4997,7 +4997,7 @@ impl CommandExecutor {
                 Ok(Command::HGet(to_string(&args[0]), to_sds(&args[1])))
             }
             "HSET" => {
-                if args.len() < 3 || args.len().is_multiple_of(2) {
+                if args.len() < 3 || args.len() % 2 == 0 {
                     return Err("HSET requires key and field-value pairs".to_string());
                 }
                 let key = to_string(&args[0]);
@@ -5149,7 +5149,7 @@ impl CommandExecutor {
                     }
                 }
 
-                if !(args.len() - i).is_multiple_of(2) || i >= args.len() {
+                if !(args.len() - i) % 2 == 0 || i >= args.len() {
                     return Err("ZADD requires score-member pairs".to_string());
                 }
 
