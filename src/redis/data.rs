@@ -1220,6 +1220,73 @@ impl RedisSet {
     pub fn is_empty(&self) -> bool {
         self.members.is_empty()
     }
+
+    /// SPOP: Remove and return a random member from the set
+    /// Returns None if the set is empty
+    pub fn pop(&mut self) -> Option<SDS> {
+        #[cfg(debug_assertions)]
+        let pre_len = self.members.len();
+
+        // Get a "random" member by taking the first from iterator
+        // HashSet iteration order is arbitrary, which provides pseudo-randomness
+        let member = self.members.iter().next().cloned();
+
+        if let Some(ref m) = member {
+            let removed = self.members.remove(m);
+
+            // TigerStyle: Postconditions
+            debug_assert!(removed, "Postcondition violated: member must have been removed");
+            debug_assert!(
+                !self.members.contains(m),
+                "Postcondition violated: popped member must not exist in set"
+            );
+            #[cfg(debug_assertions)]
+            {
+                debug_assert_eq!(
+                    self.members.len(),
+                    pre_len - 1,
+                    "Postcondition violated: len must decrease by 1 after pop"
+                );
+            }
+        }
+
+        self.verify_invariants();
+        member.map(|s| SDS::from_str(&s))
+    }
+
+    /// SPOP with count: Remove and return up to `count` random members
+    pub fn pop_count(&mut self, count: usize) -> Vec<SDS> {
+        #[cfg(debug_assertions)]
+        let pre_len = self.members.len();
+
+        let to_remove = count.min(self.members.len());
+        let mut result = Vec::with_capacity(to_remove);
+
+        for _ in 0..to_remove {
+            if let Some(member) = self.members.iter().next().cloned() {
+                self.members.remove(&member);
+                result.push(SDS::from_str(&member));
+            }
+        }
+
+        // TigerStyle: Postconditions
+        #[cfg(debug_assertions)]
+        {
+            debug_assert_eq!(
+                result.len(),
+                to_remove,
+                "Postcondition violated: must return exactly to_remove members"
+            );
+            debug_assert_eq!(
+                self.members.len(),
+                pre_len - to_remove,
+                "Postcondition violated: len must decrease by to_remove after pop_count"
+            );
+        }
+
+        self.verify_invariants();
+        result
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

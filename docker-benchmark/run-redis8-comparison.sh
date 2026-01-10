@@ -15,10 +15,10 @@ DATA_SIZE=64
 # Misc: ping_mbulk (latency baseline)
 # Core: set, get, incr, mset
 # List: lpush, rpush, lpop, rpop, lrange_100, lrange_300, lrange_500
-# Set: sadd
+# Set: sadd, spop
 # Hash: hset
 # Sorted Set: zadd
-COMMANDS="ping_mbulk set get mset incr lpush rpush lpop rpop lrange_100 lrange_300 lrange_500 sadd hset zadd"
+COMMANDS="ping_mbulk set get mset incr lpush rpush lpop rpop lrange_100 lrange_300 lrange_500 sadd spop hset zadd"
 
 cd "$(dirname "$0")"
 

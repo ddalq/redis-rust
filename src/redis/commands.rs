@@ -69,6 +69,7 @@ pub enum Command {
     SMembers(String),
     SIsMember(String, SDS),
     SCard(String),
+    SPop(String, Option<usize>), // SPOP key [count]
     // Hash commands
     HSet(String, Vec<(SDS, SDS)>),
     HGet(String, SDS),
@@ -812,6 +813,20 @@ impl Command {
                         }
                         let key = Self::extract_string(&elements[1])?;
                         Ok(Command::SCard(key))
+                    }
+                    "SPOP" => {
+                        // SPOP key [count]
+                        if elements.len() < 2 || elements.len() > 3 {
+                            return Err("SPOP requires 1 or 2 arguments".to_string());
+                        }
+                        let key = Self::extract_string(&elements[1])?;
+                        let count = if elements.len() == 3 {
+                            let count_str = Self::extract_string(&elements[2])?;
+                            Some(count_str.parse::<usize>().map_err(|_| "ERR value is not an integer or out of range")?)
+                        } else {
+                            None
+                        };
+                        Ok(Command::SPop(key, count))
                     }
                     "HSET" => {
                         // HSET key field value [field value ...]
@@ -1800,6 +1815,20 @@ impl Command {
                         }
                         Ok(Command::SCard(Self::extract_string_zc(&elements[1])?))
                     }
+                    "SPOP" => {
+                        // SPOP key [count]
+                        if elements.len() < 2 || elements.len() > 3 {
+                            return Err("SPOP requires 1 or 2 arguments".to_string());
+                        }
+                        let key = Self::extract_string_zc(&elements[1])?;
+                        let count = if elements.len() == 3 {
+                            let count_str = Self::extract_string_zc(&elements[2])?;
+                            Some(count_str.parse::<usize>().map_err(|_| "ERR value is not an integer or out of range")?)
+                        } else {
+                            None
+                        };
+                        Ok(Command::SPop(key, count))
+                    }
                     "HSET" => {
                         // HSET key field value [field value ...]
                         if elements.len() < 4 || (elements.len() - 2) % 2 != 0 {
@@ -2297,6 +2326,7 @@ impl Command {
             | Command::SMembers(k)
             | Command::SIsMember(k, _)
             | Command::SCard(k)
+            | Command::SPop(k, _)
             | Command::HSet(k, _)
             | Command::HGet(k, _)
             | Command::HDel(k, _)
@@ -2386,6 +2416,7 @@ impl Command {
             | Command::SMembers(k)
             | Command::SIsMember(k, _)
             | Command::SCard(k)
+            | Command::SPop(k, _)
             | Command::HSet(k, _)
             | Command::HGet(k, _)
             | Command::HDel(k, _)
@@ -2492,6 +2523,7 @@ impl Command {
             Command::SMembers(_) => "SMEMBERS",
             Command::SIsMember(_, _) => "SISMEMBER",
             Command::SCard(_) => "SCARD",
+            Command::SPop(_, _) => "SPOP",
             Command::HSet(_, _) => "HSET",
             Command::HGet(_, _) => "HGET",
             Command::HDel(_, _) => "HDEL",
@@ -3923,6 +3955,47 @@ impl CommandExecutor {
                             .to_string(),
                     ),
                     None => RespValue::Integer(0),
+                }
+            }
+
+            Command::SPop(key, count) => {
+                match self.get_value_mut(key) {
+                    Some(Value::Set(s)) => {
+                        match count {
+                            None => {
+                                // SPOP key - return single element or nil
+                                match s.pop() {
+                                    Some(member) => {
+                                        RespValue::BulkString(Some(member.to_string().into_bytes()))
+                                    }
+                                    None => RespValue::BulkString(None),
+                                }
+                            }
+                            Some(n) => {
+                                // SPOP key count - return array of elements
+                                let members = s.pop_count(*n);
+                                RespValue::Array(Some(
+                                    members
+                                        .into_iter()
+                                        .map(|m| {
+                                            RespValue::BulkString(Some(m.to_string().into_bytes()))
+                                        })
+                                        .collect(),
+                                ))
+                            }
+                        }
+                    }
+                    Some(_) => RespValue::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    ),
+                    None => {
+                        // Key doesn't exist
+                        match count {
+                            None => RespValue::BulkString(None),
+                            Some(_) => RespValue::Array(Some(vec![])),
+                        }
+                    }
                 }
             }
 
