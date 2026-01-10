@@ -6,7 +6,7 @@ An experimental, actor-based Redis-compatible cache server in Rust with distribu
 
 > **Research Note**: This project is co-authored with [Claude](https://claude.ai) (Anthropic) as an experiment in AI-assisted systems programming. The sole purpose is to explore human-AI collaboration on complex distributed systems code.
 
-> **Security Warning**: This server has **no authentication or access control**. Do NOT expose to untrusted networks or the public internet. Bind to localhost or use network-level access control (firewall, VPC).
+> **Security Note**: TLS encryption and Redis 6.0+ ACL authentication are available via feature flags. See [Security Configuration](#security-configuration) for setup. Without security features enabled, bind to localhost or use network-level access control.
 
 ## Features
 
@@ -22,6 +22,8 @@ An experimental, actor-based Redis-compatible cache server in Rust with distribu
 - **Zipfian Workload Simulation**: Realistic hot/cold key access patterns
 - **Maelstrom/Jepsen Integration**: Formal linearizability testing (single-node verified)
 - **Datadog Observability**: Optional metrics, tracing, and logging via feature flag
+- **TLS Encryption**: Optional TLS via rustls (mutual TLS supported)
+- **ACL Authentication**: Redis 6.0+ compatible ACL system with user permissions
 
 ## Quick Start
 
@@ -244,8 +246,113 @@ These features conflict with the CRDT/eventual consistency architecture:
 These could be added without architectural changes:
 - **Pub/Sub**: PUBLISH, SUBSCRIBE, PSUBSCRIBE
 - **Streams**: XADD, XREAD, XRANGE, XGROUP
-- **Authentication**: AUTH, ACL commands
-- **TLS**: Encrypted connections
+
+## Security Configuration
+
+Optional security features are available via Cargo feature flags:
+
+```bash
+# Build with TLS only
+cargo build --release --features tls
+
+# Build with ACL only
+cargo build --release --features acl
+
+# Build with both TLS and ACL
+cargo build --release --features security
+```
+
+### TLS Encryption
+
+Enable TLS with environment variables:
+
+```bash
+# Required: Server certificate and key
+TLS_CERT_PATH=certs/server.crt \
+TLS_KEY_PATH=certs/server.key \
+cargo run --release --features tls --bin redis-server-optimized
+
+# Optional: Client certificate verification (mutual TLS)
+TLS_CA_PATH=certs/ca.crt \
+TLS_REQUIRE_CLIENT_CERT=true \
+TLS_CERT_PATH=certs/server.crt \
+TLS_KEY_PATH=certs/server.key \
+cargo run --release --features security --bin redis-server-optimized
+```
+
+Connect with TLS:
+```bash
+redis-cli -p 6379 --tls --cacert certs/ca.crt
+```
+
+### ACL Authentication
+
+Redis 6.0+ compatible ACL system with password and certificate-based authentication.
+
+**Password Authentication:**
+```bash
+# Simple password for default user
+REDIS_REQUIRE_PASS=secretpassword \
+cargo run --release --features acl --bin redis-server-optimized
+
+# Connect and authenticate
+redis-cli -p 6379
+> AUTH secretpassword
+OK
+```
+
+**ACL File Configuration:**
+```bash
+# Load users from ACL file
+ACL_FILE=acl.conf \
+cargo run --release --features acl --bin redis-server-optimized
+```
+
+ACL file format (one user per line):
+```
+# user <username> [on|off] [nopass|>password] [+@category] [~pattern]
+user default on >password ~* +@all
+user readonly on >readonlypass ~cache:* +@read +@connection
+user alice on nopass ~user:* +@read +@write +@connection
+```
+
+**Client Certificate Authentication:**
+
+When TLS client certificates are enabled, users can authenticate automatically based on the certificate's Common Name (CN):
+
+1. Create an ACL user matching the certificate CN
+2. Configure TLS with client cert verification
+3. Connect with a client certificate
+
+```bash
+# ACL file with cert-based user
+echo "user alice on nopass ~* +@all" > acl.conf
+
+# Start server with client cert verification
+ACL_FILE=acl.conf \
+TLS_CA_PATH=certs/ca.crt \
+TLS_CERT_PATH=certs/server.crt \
+TLS_KEY_PATH=certs/server.key \
+cargo run --release --features security --bin redis-server-optimized
+
+# Connect with alice's certificate (auto-authenticates as 'alice')
+redis-cli --tls --cacert certs/ca.crt --cert certs/alice.crt --key certs/alice.key
+```
+
+### ACL Commands
+
+Supported ACL commands:
+- `AUTH [username] password` - Authenticate
+- `ACL WHOAMI` - Current user
+- `ACL LIST` - List all users
+- `ACL USERS` - List usernames
+- `ACL GETUSER username` - Get user details
+- `ACL SETUSER username [rules...]` - Create/modify user
+- `ACL DELUSER username...` - Delete users
+- `ACL CAT [category]` - List command categories
+- `ACL GENPASS [bits]` - Generate random password
+
+See [ADR-009](docs/adr/009-security-tls-acl.md) for implementation details.
 
 ## Docker Benchmarking
 
