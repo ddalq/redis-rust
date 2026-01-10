@@ -4,6 +4,7 @@ pub mod lua;
 mod resp;
 mod resp_optimized;
 mod server;
+pub mod sorted_set_dst;
 #[cfg(test)]
 mod tests;
 
@@ -13,3 +14,7 @@ pub use lua::ScriptCache;
 pub use resp::{RespParser, RespValue};
 pub use resp_optimized::{BufferPool, RespCodec, RespValueZeroCopy};
 pub use server::{RedisClient, RedisServer};
+pub use sorted_set_dst::{
+    run_sorted_set_batch, summarize_batch, SortedSetDSTConfig, SortedSetDSTHarness,
+    SortedSetDSTResult,
+};

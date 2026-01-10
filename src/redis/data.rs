@@ -1582,12 +1582,16 @@ impl RedisSortedSet {
         self.members.len()
     }
 
+    /// Get the skiplist length (for DST invariant checking)
+    pub fn skiplist_len(&self) -> usize {
+        self.skiplist.len()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.members.is_empty()
     }
 
-    /// Check if the set is sorted (for tests). Always true for skiplist-based impl.
-    #[cfg(test)]
+    /// Check if the set is sorted. Always true for a correctly functioning skiplist.
     pub fn is_sorted(&self) -> bool {
         let mut prev_score = f64::NEG_INFINITY;
         let mut prev_member = String::new();
