@@ -62,7 +62,7 @@
 | SADD | 884,956 req/s | 877,193 req/s | 1,041,667 req/s | **118.7%** |
 | SPOP | 970,874 req/s | 970,874 req/s | 1,123,596 req/s | **115.7%** |
 | HSET | 617,284 req/s | 847,458 req/s | 862,069 req/s | **101.7%** |
-| ZADD | 480,769 req/s | 588,235 req/s | 537,634 req/s | **91.3%** |
+| ZADD | 480,769 req/s | 588,235 req/s | 699,300 req/s | **114.7%** |
 
 ### Linux Summary
 
@@ -71,20 +71,21 @@
 - Beats Redis 8.0 on **MSET (107.0%)** and **LRANGE_100 (126.4%)**
 - Average: ~98% of Redis 8.0
 
-**Pipelined (P=16):** 91-133% of Redis 8.0
+**Pipelined (P=16):** 97-133% of Redis 8.0
 - **LPOP: 132.6%** - 1.05M req/s (33% faster than Redis 8.0)
 - **RPOP: 123.2%** - 1.01M req/s (23% faster)
 - **LPUSH: 121.9%** - 952K req/s (22% faster)
 - **PING: 119.4%** - 1.30M req/s (19% faster)
 - **SADD: 118.7%** - 1.04M req/s (19% faster)
 - **SPOP: 115.7%** - 1.12M req/s (16% faster)
+- **ZADD: 114.7%** - 699K req/s (15% faster)
 - **RPUSH: 112.5%** - 893K req/s (13% faster)
 - **GET: 106.3%** - 909K req/s (6% faster)
 - **SET: 105.7%** - 820K req/s (6% faster)
 - **LRANGE_500: 104.7%** - 20K req/s (5% faster)
-- Average: ~108% of Redis 8.0 (8% faster overall)
+- Average: ~110% of Redis 8.0 (10% faster overall)
 
-**Wins:** 12 out of 16 pipelined operations beat Redis 8.0
+**Wins:** 13 out of 16 pipelined operations beat Redis 8.0
 
 ---
 

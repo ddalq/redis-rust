@@ -1503,44 +1503,46 @@ impl RedisSortedSet {
         #[cfg(debug_assertions)]
         let pre_len = self.members.len();
 
-        // Check if member already exists
-        if let Some(&old_score) = self.members.get(&key) {
-            if (old_score - score).abs() < f64::EPSILON {
-                return false; // Score unchanged
+        // Check if member already exists - use entry API to avoid double lookup
+        use std::collections::hash_map::Entry;
+        match self.members.entry(key) {
+            Entry::Occupied(mut entry) => {
+                let old_score = *entry.get();
+                if (old_score - score).abs() < f64::EPSILON {
+                    return false; // Score unchanged
+                }
+                // Update score
+                entry.insert(score);
+                // Update skiplist: remove old entry, insert new
+                let key_ref = entry.key();
+                self.skiplist.remove_with_score(key_ref, old_score);
+                self.skiplist.insert(key_ref.clone(), score);
+
+                #[cfg(debug_assertions)]
+                self.verify_invariants();
+                false
             }
-            // Update score in both structures
-            self.members.insert(key.clone(), score);
-            // Must remove old entry first since skiplist is ordered by (score, member)
-            // and the old entry is at a different position
-            let removed = self.skiplist.remove_with_score(&key, old_score);
-            debug_assert!(removed, "remove_with_score must succeed for existing member");
-            self.skiplist.insert(key, score);
+            Entry::Vacant(entry) => {
+                // New member - insert into skiplist first with cloned key,
+                // then insert key into hashmap
+                let key_for_skiplist = entry.key().clone();
+                entry.insert(score);
+                self.skiplist.insert(key_for_skiplist, score);
 
-            #[cfg(debug_assertions)]
-            self.verify_invariants();
-            return false;
+                // TigerStyle: Postconditions
+                #[cfg(debug_assertions)]
+                {
+                    debug_assert_eq!(
+                        self.members.len(),
+                        pre_len + 1,
+                        "Postcondition violated: len must increase by 1"
+                    );
+                    self.verify_invariants();
+                }
+
+                true
+            }
         }
-
-        // New member
-        self.members.insert(key.clone(), score);
-        self.skiplist.insert(key.clone(), score);
-
-        // TigerStyle: Postconditions
-        debug_assert!(
-            self.members.contains_key(&key),
-            "Postcondition violated: member must exist after add"
-        );
-        #[cfg(debug_assertions)]
-        {
-            debug_assert_eq!(
-                self.members.len(),
-                pre_len + 1,
-                "Postcondition violated: len must increase by 1"
-            );
-            self.verify_invariants();
-        }
-
-        true
     }
 
     /// Remove member. Returns true if removed.

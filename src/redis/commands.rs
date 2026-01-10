@@ -3713,11 +3713,24 @@ impl CommandExecutor {
                 self.access_times.insert(key.clone(), self.current_time);
                 match zset {
                     Value::SortedSet(zs) => {
-                        let mut added = 0;
-                        let mut changed = 0;
+                        let mut added = 0i64;
+                        let mut changed = 0i64;
+
+                        // Fast path: no flags set (common case)
+                        if !*nx && !*xx && !*gt && !*lt && !*ch {
+                            for (score, member) in pairs {
+                                if zs.add(member.clone(), *score) {
+                                    added += 1;
+                                }
+                            }
+                            return RespValue::Integer(added);
+                        }
+
+                        // Slow path: flags are set
                         for (score, member) in pairs {
-                            let exists = zs.score(&member).is_some();
-                            let current_score = zs.score(&member);
+                            // Single lookup for current score
+                            let current_score = zs.score(member);
+                            let exists = current_score.is_some();
 
                             // NX: only add new elements
                             if *nx && exists {
@@ -3728,7 +3741,7 @@ impl CommandExecutor {
                                 continue;
                             }
                             // GT: only update when new score > current
-                            if *gt && exists {
+                            if *gt {
                                 if let Some(cs) = current_score {
                                     if *score <= cs {
                                         continue;
@@ -3736,7 +3749,7 @@ impl CommandExecutor {
                                 }
                             }
                             // LT: only update when new score < current
-                            if *lt && exists {
+                            if *lt {
                                 if let Some(cs) = current_score {
                                     if *score >= cs {
                                         continue;
