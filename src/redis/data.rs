@@ -254,7 +254,8 @@ impl SkipList {
                 let idx_fwd = self.nodes[idx].as_ref().unwrap().levels[i].forward;
 
                 let update_node = self.nodes[update[i]].as_mut().unwrap();
-                update_node.levels[i].span += idx_span - 1;
+                // Reorder arithmetic to avoid overflow: (span + idx_span) - 1 instead of span + (idx_span - 1)
+                update_node.levels[i].span = update_node.levels[i].span + idx_span - 1;
                 update_node.levels[i].forward = idx_fwd;
             } else {
                 let update_node = self.nodes[update[i]].as_mut().unwrap();
@@ -326,6 +327,43 @@ impl SkipList {
         }
 
         None
+    }
+
+    /// Remove an element by member name and score. Returns true if removed.
+    /// This method properly traverses the (score, member) ordered skiplist.
+    pub fn remove_with_score(&mut self, member: &str, score: f64) -> bool {
+        let mut update = [0usize; SKIPLIST_MAXLEVEL];
+
+        // Find position at each level (same traversal as insert)
+        let mut x = 0;
+        for i in (0..self.level).rev() {
+            loop {
+                let node = self.nodes[x].as_ref().unwrap();
+                if let Some(fwd) = node.levels[i].forward {
+                    let fwd_node = self.nodes[fwd].as_ref().unwrap();
+                    if Self::compare(fwd_node.score, &fwd_node.member, score, member)
+                        == Ordering::Less
+                    {
+                        x = fwd;
+                        continue;
+                    }
+                }
+                break;
+            }
+            update[i] = x;
+        }
+
+        // Check if we found the exact element
+        let node = self.nodes[x].as_ref().unwrap();
+        if let Some(fwd) = node.levels[0].forward {
+            let fwd_node = self.nodes[fwd].as_ref().unwrap();
+            if fwd_node.member == member && (fwd_node.score - score).abs() < f64::EPSILON {
+                self.delete_node(fwd, &update);
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Get rank of element (0-indexed). Returns None if not found.
@@ -1405,7 +1443,11 @@ impl RedisSortedSet {
             }
             // Update score in both structures
             self.members.insert(key.clone(), score);
-            self.skiplist.insert(key, score); // Skip list handles update internally
+            // Must remove old entry first since skiplist is ordered by (score, member)
+            // and the old entry is at a different position
+            let removed = self.skiplist.remove_with_score(&key, old_score);
+            debug_assert!(removed, "remove_with_score must succeed for existing member");
+            self.skiplist.insert(key, score);
 
             #[cfg(debug_assertions)]
             self.verify_invariants();
@@ -1443,9 +1485,15 @@ impl RedisSortedSet {
         #[cfg(debug_assertions)]
         let existed = self.members.contains_key(&key);
 
+        // Get score before removing from members (needed for skiplist removal)
+        let score = self.members.get(&key).copied();
         let removed = self.members.remove(&key).is_some();
         if removed {
-            self.skiplist.remove(&key);
+            // Use remove_with_score since skiplist is ordered by (score, member)
+            // and we need the score to find the correct entry
+            if let Some(score) = score {
+                self.skiplist.remove_with_score(&key, score);
+            }
         }
 
         #[cfg(debug_assertions)]
@@ -1661,6 +1709,28 @@ impl PartialEq for RedisSortedSet {
 #[cfg(test)]
 mod sorted_set_tests {
     use super::*;
+
+    #[test]
+    fn test_skiplist_remove_with_score() {
+        let mut sl = SkipList::new();
+
+        // Insert and check length
+        sl.insert("a".to_string(), 1.0);
+        assert_eq!(sl.len(), 1, "After insert(a, 1.0)");
+
+        // Remove with correct score
+        let removed = sl.remove_with_score("a", 1.0);
+        assert!(removed, "remove_with_score should return true");
+        assert_eq!(sl.len(), 0, "After remove_with_score(a, 1.0)");
+
+        // Insert at different score
+        sl.insert("a".to_string(), 5.0);
+        assert_eq!(sl.len(), 1, "After insert(a, 5.0)");
+
+        // Verify we can find it at new score
+        assert!(sl.rank("a", 5.0).is_some(), "Should find a at score 5.0");
+        assert!(sl.rank("a", 1.0).is_none(), "Should NOT find a at score 1.0");
+    }
 
     fn create_test_set() -> RedisSortedSet {
         let mut zset = RedisSortedSet::new();
