@@ -180,9 +180,20 @@ impl OptimizedRedisServer {
                 info!("Authentication enabled (REDIS_REQUIRE_PASS set)");
             }
 
-            // TODO: Load ACL file if configured
+            // Load ACL file if configured
             if let Some(ref acl_file) = config.acl.acl_file {
-                warn!("ACL file loading not yet implemented: {:?}", acl_file);
+                match crate::security::acl::load_acl_file(acl_file) {
+                    Ok(users) => {
+                        info!("Loading ACL file: {:?} ({} users)", acl_file, users.len());
+                        for user in users {
+                            manager.set_user(user);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to load ACL file {:?}: {}", acl_file, e);
+                        // Continue without the ACL file - the default user is still available
+                    }
+                }
             }
 
             if !config.acl.require_auth {

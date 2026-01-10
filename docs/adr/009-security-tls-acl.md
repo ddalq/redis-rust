@@ -92,6 +92,7 @@ When features are disabled:
 | 2026-01-09 | TLS accept loop integration complete | Server wraps TcpStream with TlsAcceptor when configured |
 | 2026-01-09 | ACL permission checking in handler | Per-command ACL check before execution |
 | 2026-01-09 | Per-connection authentication state | Track authenticated user per connection |
+| 2026-01-10 | ACL file loading implemented | Load users from ACL_FILE env at startup |
 
 ## Implementation Status
 
@@ -116,6 +117,8 @@ When features are disabled:
 | AUTH/ACL command handling | `src/production/connection_optimized.rs` | Complete |
 | Command.get_keys() | `src/redis/commands.rs` | Complete |
 | AclManager in server | `src/production/server_optimized.rs` | Complete |
+| ACL file loading | `src/security/acl/file.rs` | Complete |
+| ACL file integration | `src/production/server_optimized.rs` | Complete |
 
 ### Validated
 
@@ -131,12 +134,14 @@ When features are disabled:
 - AUTH command authenticates users and updates connection state
 - ACL commands (WHOAMI, LIST, USERS, GETUSER, SETUSER, DELUSER, CAT, GENPASS) work
 - Permission checking rejects unauthorized commands
+- ACL file parsing (7 tests passing)
+- ACL file loading at startup loads users correctly
+- Key pattern restrictions work correctly
 
 ### Not Yet Implemented
 
 | Component | Notes |
 |-----------|-------|
-| ACL file loading | Load ACL configuration from file at startup |
 | Client certificate authentication | Extract identity from client cert |
 
 ## References

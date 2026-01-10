@@ -151,7 +151,7 @@ impl AclCommandHandler {
 }
 
 /// Apply a single ACL rule to a user
-fn apply_rule(user: &mut AclUser, rule: &str) -> Result<(), AclError> {
+pub fn apply_rule(user: &mut AclUser, rule: &str) -> Result<(), AclError> {
     let rule = rule.trim();
 
     match rule {

@@ -7,10 +7,12 @@
 //! - Default user for backwards compatibility
 
 mod commands;
+mod file;
 mod patterns;
 mod user;
 
-pub use commands::AclCommandHandler;
+pub use commands::{apply_rule, AclCommandHandler};
+pub use file::{load_acl_file, save_acl_file, AclFileError};
 pub use patterns::{KeyPattern, KeyPatterns};
 pub use user::{AclUser, CommandCategory, CommandPermissions};
 
